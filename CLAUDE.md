@@ -78,7 +78,57 @@ rovs-openflow   → OpenFlow 1.3 (in progress, OXM fields defined)
 ### JSON-RPC Parsing
 The connection uses brace-depth tracking (not newlines) to parse JSON - OVSDB servers don't send newlines after responses.
 
-## Testing with User-Space OVSDB
+## Testing with Container (Recommended)
+
+The easiest way to run integration tests is using the containerized OVS environment:
+
+```bash
+# Run all tests (unit + integration)
+./scripts/test-with-ovs.sh
+
+# Run only integration tests
+./scripts/test-with-ovs.sh integration
+
+# Run examples
+./scripts/test-with-ovs.sh examples
+
+# Run with ovs-vswitchd for OpenFlow testing (privileged)
+./scripts/test-with-ovs.sh full
+
+# Start container for manual testing
+./scripts/test-with-ovs.sh start
+# Then in another terminal:
+OVSDB_ADDR=tcp:127.0.0.1:6640 cargo test -- --ignored
+```
+
+The container uses Alpine Linux with OVS userspace datapath - no kernel modules required.
+
+### Container Modes
+
+| Mode | Command | Privileges | Use Case |
+|------|---------|------------|----------|
+| ovsdb-only | `./scripts/test-with-ovs.sh integration` | None | OVSDB protocol testing |
+| full | `./scripts/test-with-ovs.sh full` | `--privileged` | OpenFlow + packet forwarding |
+
+### Manual Container Usage
+
+```bash
+# Build image
+podman build -t rovs-ovsdb .
+
+# Run ovsdb-only (rootless)
+podman run --rm -d -p 6640:6640 --name rovs-ovsdb rovs-ovsdb ovsdb-only
+
+# Run with ovs-vswitchd (needs privileges for userspace datapath)
+podman run --rm -d --privileged -p 6640:6640 --name rovs-ovsdb rovs-ovsdb
+
+# Connect
+OVSDB_ADDR=tcp:127.0.0.1:6640 cargo run --example ovsdb_transaction
+```
+
+## Testing with Host OVSDB (Alternative)
+
+If you prefer running OVS directly on the host:
 
 ```bash
 mkdir -p /tmp/ovs-test
