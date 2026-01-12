@@ -1,0 +1,20 @@
+[package]
+name = "rovs-openflow"
+description = "OpenFlow protocol implementation for OVS"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+rovs-transport = { workspace = true }
+
+tokio = { workspace = true }
+bytes = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+nom = { workspace = true }
+
+[lints]
+workspace = true

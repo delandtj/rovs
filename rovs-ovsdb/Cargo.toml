@@ -1,0 +1,23 @@
+[package]
+name = "rovs-ovsdb"
+description = "OVSDB client implementation (IDL, transactions, schema)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+rovs-types = { workspace = true }
+rovs-transport = { workspace = true }
+rovs-jsonrpc = { workspace = true }
+
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+uuid = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+
+[lints]
+workspace = true

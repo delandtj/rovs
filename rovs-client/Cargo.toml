@@ -1,0 +1,40 @@
+[package]
+name = "rovs-client"
+description = "High-level OVS client API"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+rovs-types = { workspace = true }
+rovs-transport = { workspace = true }
+rovs-jsonrpc = { workspace = true }
+rovs-ovsdb = { workspace = true }
+rovs-openflow = { workspace = true }
+
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+uuid = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+tracing-subscriber = { workspace = true }
+
+[[example]]
+name = "ovsdb_monitor"
+path = "examples/ovsdb_monitor.rs"
+
+[[example]]
+name = "list_bridges"
+path = "examples/list_bridges.rs"
+
+[[example]]
+name = "add_flow"
+path = "examples/add_flow.rs"
+
+[lints]
+workspace = true

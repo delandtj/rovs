@@ -1,0 +1,54 @@
+[workspace]
+resolver = "2"
+members = [
+    "rovs-types",
+    "rovs-transport",
+    "rovs-jsonrpc",
+    "rovs-ovsdb",
+    "rovs-openflow",
+    "rovs-client",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/delandtj/rovs"
+rust-version = "1.85"
+
+[workspace.dependencies]
+# Internal crates
+rovs-types = { path = "rovs-types" }
+rovs-transport = { path = "rovs-transport" }
+rovs-jsonrpc = { path = "rovs-jsonrpc" }
+rovs-ovsdb = { path = "rovs-ovsdb" }
+rovs-openflow = { path = "rovs-openflow" }
+rovs-client = { path = "rovs-client" }
+
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# TLS
+tokio-rustls = "0.26"
+rustls-pemfile = "2"
+
+# Utilities
+bytes = "1"
+uuid = { version = "1", features = ["v4", "serde"] }
+thiserror = "2"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Parsing
+nom = "8"
+
+[workspace.lints.rust]
+unsafe_code = "deny"
+
+[workspace.lints.clippy]
+all = "warn"
+pedantic = "warn"
