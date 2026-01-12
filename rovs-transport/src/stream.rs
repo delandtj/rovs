@@ -20,6 +20,10 @@ pub enum Stream {
 
 impl Stream {
     /// Connect to the given address.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the connection fails or TLS is requested but not yet implemented.
     pub async fn connect(addr: &Address) -> Result<Self> {
         match addr {
             Address::Unix(path) => {

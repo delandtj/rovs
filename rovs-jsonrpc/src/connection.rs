@@ -1,4 +1,13 @@
-//! JSON-RPC connection handling.
+//! JSON-RPC 1.0 connection handling for OVSDB.
+//!
+//! This module implements JSON-RPC communication with OVSDB servers.
+//!
+//! # Important Implementation Detail
+//!
+//! OVSDB servers do **not** send newlines after JSON responses. Instead, this
+//! implementation uses brace-depth tracking to detect complete JSON objects.
+//! The parser tracks `{` and `}` characters (respecting string contents and escapes)
+//! to determine when a complete message has been received.
 
 use std::collections::VecDeque;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -11,6 +20,9 @@ use rovs_transport::Stream;
 use crate::{Error, Message, Request, Response, Result};
 
 /// A JSON-RPC connection over a transport stream.
+///
+/// Handles request/response matching and buffers server notifications
+/// received while waiting for responses.
 pub struct Connection {
     reader: tokio::io::ReadHalf<Stream>,
     writer: BufWriter<tokio::io::WriteHalf<Stream>>,
@@ -21,7 +33,9 @@ pub struct Connection {
 }
 
 impl Connection {
-    /// Create a new connection from a stream.
+    /// Create a new connection from a transport stream.
+    ///
+    /// The stream is split into read/write halves for concurrent I/O.
     pub fn new(stream: Stream) -> Self {
         let (read_half, write_half) = tokio::io::split(stream);
         Self {
@@ -38,7 +52,12 @@ impl Connection {
         self.next_id.fetch_add(1, Ordering::SeqCst)
     }
 
-    /// Send a request and wait for the response.
+    /// Send a request and wait for the matching response.
+    ///
+    /// Any notifications received while waiting are buffered and can be
+    /// retrieved via [`pop_notification`](Self::pop_notification).
+    ///
+    /// Returns the result value, or an error if the RPC failed.
     pub async fn transact(&mut self, method: &str, params: Value) -> Result<Value> {
         let id = self.next_id();
         let request = Request::new(method, params, id);
@@ -95,8 +114,14 @@ impl Connection {
 
     /// Receive a single message from the connection.
     ///
-    /// Reads JSON incrementally, handling the fact that OVSDB doesn't
-    /// send newlines after responses.
+    /// Uses brace-depth tracking to detect complete JSON objects since
+    /// OVSDB servers don't send newlines after responses. Handles:
+    /// - Nested JSON objects
+    /// - Strings containing braces
+    /// - Escaped characters within strings
+    ///
+    /// Returns either a [`Request`] (notification from server) or
+    /// [`Response`] (reply to our request).
     pub async fn recv_message(&mut self) -> Result<Message> {
         tracing::debug!("Waiting to receive message...");
 
@@ -165,17 +190,23 @@ impl Connection {
         }
     }
 
-    /// Check if there are pending notifications from the server.
+    /// Check if there are buffered notifications from the server.
+    ///
+    /// Notifications received while waiting for a response are buffered here.
     pub fn has_pending_notifications(&self) -> bool {
         !self.pending_notifications.is_empty()
     }
 
-    /// Get the next pending notification, if any.
+    /// Pop the next buffered notification (FIFO order).
+    ///
+    /// Returns `None` if no notifications are pending.
     pub fn pop_notification(&mut self) -> Option<Request> {
         self.pending_notifications.pop_front()
     }
 
-    /// Process all pending notifications with a callback.
+    /// Drain all buffered notifications, returning an iterator.
+    ///
+    /// Clears the notification buffer and yields all pending notifications.
     pub fn drain_notifications(&mut self) -> impl Iterator<Item = Request> + '_ {
         self.pending_notifications.drain(..)
     }

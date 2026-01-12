@@ -7,11 +7,8 @@ use rovs_client::OvsClient;
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Connect to OVS
-    let client = OvsClient::connect(
-        "unix:/var/run/openvswitch/db.sock",
-        "tcp:127.0.0.1:6653",
-    )
-    .await?;
+    let client =
+        OvsClient::connect("unix:/var/run/openvswitch/db.sock", "tcp:127.0.0.1:6653").await?;
 
     // List bridges
     let bridges = client.list_bridges().await?;

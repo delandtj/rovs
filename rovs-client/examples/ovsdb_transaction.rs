@@ -4,7 +4,7 @@
 //!   cargo run --example ovsdb_transaction
 
 use rovs_ovsdb::{Client, Transaction};
-use tracing_subscriber::{fmt, EnvFilter};
+use tracing_subscriber::{EnvFilter, fmt};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -14,8 +14,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .init();
 
     // Default to user-space test socket
-    let addr = std::env::var("OVSDB_ADDR")
-        .unwrap_or_else(|_| "unix:/tmp/ovs-test/db.sock".to_owned());
+    let addr =
+        std::env::var("OVSDB_ADDR").unwrap_or_else(|_| "unix:/tmp/ovs-test/db.sock".to_owned());
 
     println!("Connecting to OVSDB at: {}", addr);
 
@@ -102,7 +102,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let iface_type = row.get_string("type").unwrap_or("");
         let options = row.get("options");
         if iface_type == "patch" {
-            println!("  Interface: {} (type: {}, options: {:?})", name, iface_type, options);
+            println!(
+                "  Interface: {} (type: {}, options: {:?})",
+                name, iface_type, options
+            );
         }
     }
 

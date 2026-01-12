@@ -1,8 +1,9 @@
-//! OpenFlow Extensible Match (OXM) encoding.
+//! `OpenFlow` Extensible Match (OXM) encoding.
 //!
-//! OXM is used in OpenFlow 1.2+ for flexible match field encoding.
+//! OXM is used in `OpenFlow` 1.2+ for flexible match field encoding.
 
 /// OXM class identifiers.
+#[allow(dead_code)] // Reserved for future OpenFlow implementation
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u16)]
 pub enum OxmClass {
@@ -16,7 +17,8 @@ pub enum OxmClass {
     Nxm1 = 0x0001,
 }
 
-/// OXM field identifiers for OpenFlow Basic class.
+/// OXM field identifiers for `OpenFlow` Basic class.
+#[allow(dead_code)] // Reserved for future OpenFlow implementation
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
 pub enum OxmField {
@@ -89,6 +91,7 @@ pub enum OxmField {
 /// Build an OXM header.
 ///
 /// Format: class (16 bits) | field (7 bits) | hasmask (1 bit) | length (8 bits)
+#[allow(dead_code)] // Reserved for future OpenFlow implementation
 pub fn oxm_header(class: OxmClass, field: OxmField, has_mask: bool, length: u8) -> u32 {
     let class_val = class as u32;
     let field_val = (field as u32) << 1;

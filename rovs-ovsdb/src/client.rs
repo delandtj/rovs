@@ -1,6 +1,6 @@
 //! OVSDB client - manages connection, schema, and IDL.
 
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use uuid::Uuid;
 
 use rovs_jsonrpc::Connection;
@@ -105,21 +105,39 @@ impl Client {
     }
 
     /// Get the IDL (in-memory database replica).
+    ///
+    /// The IDL contains all monitored tables and rows. Use it to query
+    /// the current state without making RPC calls.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// for bridge in client.idl().rows("Bridge") {
+    ///     println!("Bridge: {}", bridge.get_string("name").unwrap_or("?"));
+    /// }
+    /// ```
     pub fn idl(&self) -> &Idl {
         &self.idl
     }
 
-    /// Get mutable IDL reference.
+    /// Get a mutable reference to the IDL.
+    ///
+    /// Rarely needed; most operations use the immutable [`idl`](Self::idl).
     pub fn idl_mut(&mut self) -> &mut Idl {
         &mut self.idl
     }
 
     /// Get the database schema.
+    ///
+    /// The schema describes all tables and columns in the database.
+    /// Returns `None` if the schema hasn't been loaded yet.
     pub fn schema(&self) -> Option<&DbSchema> {
         self.idl.schema()
     }
 
-    /// Check if the client is connected and monitoring.
+    /// Check if the client is connected and actively monitoring.
+    ///
+    /// Returns `true` after successful connection and monitor setup.
     pub fn is_connected(&self) -> bool {
         self.idl.state() == IdlState::Monitoring
     }
@@ -254,16 +272,23 @@ impl Client {
         Ok(())
     }
 
-    /// Run one iteration of the IDL event loop.
+    /// Process any pending update notifications (non-blocking).
     ///
-    /// Processes any pending notifications from the server.
-    /// Returns true if any updates were processed.
+    /// Drains buffered notifications and updates the IDL. Use this in
+    /// event loops where you need to check for updates without blocking.
+    ///
+    /// Returns `true` if any updates were processed.
+    ///
+    /// For blocking behavior, use [`wait`](Self::wait) instead.
     pub async fn run(&mut self) -> Result<bool> {
         let mut updated = false;
 
         // Process any buffered notifications
         while let Some(notification) = self.conn.pop_notification() {
-            if notification.method == "update" || notification.method == "update2" || notification.method == "update3" {
+            if notification.method == "update"
+                || notification.method == "update2"
+                || notification.method == "update3"
+            {
                 if let Some(params) = notification.params.as_array() {
                     // params: [monitor_id, updates]
                     if params.len() >= 2 {
@@ -277,9 +302,20 @@ impl Client {
         Ok(updated)
     }
 
-    /// Wait for updates from the server.
+    /// Wait for the next update from the server (blocking).
     ///
-    /// Blocks until an update is received or the connection closes.
+    /// Blocks until an OVSDB update notification is received, then updates
+    /// the IDL and returns. Use this in a loop to continuously monitor changes.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// loop {
+    ///     client.wait().await?;
+    ///     println!("Update received, seqno: {}", client.idl().change_seqno());
+    ///     // Process changes...
+    /// }
+    /// ```
     pub async fn wait(&mut self) -> Result<()> {
         use rovs_jsonrpc::Message;
 
@@ -289,7 +325,8 @@ impl Client {
             match msg {
                 Message::Request(req) => {
                     // Server notification
-                    if req.method == "update" || req.method == "update2" || req.method == "update3" {
+                    if req.method == "update" || req.method == "update2" || req.method == "update3"
+                    {
                         if let Some(params) = req.params.as_array() {
                             if params.len() >= 2 {
                                 self.idl.process_update(&params[1]);
@@ -320,7 +357,10 @@ impl Client {
             json!([self.config.database, operations])
         };
 
-        self.conn.transact("transact", params).await.map_err(Into::into)
+        self.conn
+            .transact("transact", params)
+            .await
+            .map_err(Into::into)
     }
 
     /// Commit a transaction.
@@ -357,7 +397,10 @@ impl Client {
         Ok(dbs)
     }
 
-    /// Cancel monitoring.
+    /// Cancel the current monitor and stop receiving updates.
+    ///
+    /// After cancellation, the IDL will no longer receive updates. You can
+    /// start a new monitor by reconnecting.
     pub async fn cancel_monitor(&mut self) -> Result<()> {
         if let Some(monitor_id) = self.monitor_id.take() {
             self.conn

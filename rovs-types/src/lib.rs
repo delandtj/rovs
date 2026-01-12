@@ -1,4 +1,4 @@
-//! Shared types for OVSDB and OpenFlow protocols.
+//! Shared types for OVSDB and `OpenFlow` protocols.
 //!
 //! This crate provides the fundamental data types used across the rovs ecosystem:
 //! - `Atom` - OVSDB atomic values (integers, strings, UUIDs, etc.)

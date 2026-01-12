@@ -9,11 +9,8 @@ use rovs_client::{ActionList, FlowMod, Match, OvsClient};
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Connect to OVS
-    let client = OvsClient::connect(
-        "unix:/var/run/openvswitch/db.sock",
-        "tcp:127.0.0.1:6653",
-    )
-    .await?;
+    let client =
+        OvsClient::connect("unix:/var/run/openvswitch/db.sock", "tcp:127.0.0.1:6653").await?;
 
     // Create a flow that matches HTTP traffic (TCP port 80) and forwards to port 2
     let flow = FlowMod::add()

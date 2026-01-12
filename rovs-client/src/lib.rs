@@ -1,8 +1,14 @@
+#![allow(clippy::must_use_candidate)]
+#![allow(clippy::doc_markdown)]
+#![allow(clippy::missing_errors_doc)]
+#![allow(clippy::redundant_closure_for_method_calls)]
+#![allow(clippy::unused_async)]
+
 //! High-level OVS client API.
 //!
 //! Provides a unified interface for:
 //! - OVSDB topology management (bridges, ports, interfaces)
-//! - OpenFlow flow programming
+//! - `OpenFlow` flow programming
 //!
 //! # Example
 //!

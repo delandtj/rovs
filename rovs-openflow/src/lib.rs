@@ -1,11 +1,22 @@
-//! OpenFlow protocol implementation for OVS.
+// OpenFlow implementation is work-in-progress
+#![allow(clippy::must_use_candidate)]
+#![allow(clippy::return_self_not_must_use)]
+#![allow(clippy::doc_markdown)]
+#![allow(clippy::missing_errors_doc)]
+#![allow(clippy::struct_excessive_bools)]
+#![allow(clippy::cast_possible_truncation)]
+#![allow(clippy::unused_async)]
+#![allow(clippy::bool_to_int_with_if)]
+#![allow(clippy::cast_lossless)]
+
+//! `OpenFlow` protocol implementation for OVS.
 //!
 //! Provides:
-//! - OpenFlow message encoding/decoding
+//! - `OpenFlow` message encoding/decoding
 //! - Match field builder
 //! - Action types
 //! - Flow modification
-//! - Virtual connection (VConn) abstraction
+//! - Virtual connection (`VConn`) abstraction
 
 mod action;
 mod error;

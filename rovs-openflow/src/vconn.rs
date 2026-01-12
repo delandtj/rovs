@@ -37,7 +37,12 @@ impl VConn {
     /// Perform the OpenFlow handshake.
     async fn handshake(&mut self) -> Result<()> {
         // Send Hello
-        let hello = Message::new(Version::Of13, MessageType::Hello, self.next_xid(), Bytes::new());
+        let hello = Message::new(
+            Version::Of13,
+            MessageType::Hello,
+            self.next_xid(),
+            Bytes::new(),
+        );
         self.send_message(&hello).await?;
 
         // Receive Hello

@@ -17,6 +17,7 @@ pub struct Reconnect {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[allow(dead_code)] // Reconnecting variant reserved for future use
 enum State {
     /// Not connected, not trying
     Void,
@@ -40,6 +41,7 @@ impl Default for Reconnect {
 
 impl Reconnect {
     /// Create a new reconnection state machine.
+    #[must_use]
     pub fn new() -> Self {
         Self {
             state: State::Void,
@@ -83,6 +85,7 @@ impl Reconnect {
     }
 
     /// Check if we should attempt to connect now.
+    #[must_use]
     pub fn should_connect(&self) -> bool {
         match self.state {
             State::Void => true,
@@ -98,11 +101,13 @@ impl Reconnect {
     }
 
     /// Check if we are currently connected.
+    #[must_use]
     pub fn is_connected(&self) -> bool {
         matches!(self.state, State::Active | State::Idle)
     }
 
     /// Get the current backoff duration.
+    #[must_use]
     pub fn current_backoff(&self) -> Duration {
         self.backoff
     }

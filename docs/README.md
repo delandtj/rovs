@@ -2,6 +2,8 @@
 
 Rust Open vSwitch library - a Rust replacement for Python OVS bindings.
 
+![CI](https://github.com/delandtj/rovs/actions/workflows/ci.yml/badge.svg)
+
 ## Documentation Index
 
 | Document | Description |
@@ -47,6 +49,32 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     client.commit(&mut txn).await?;
     Ok(())
 }
+```
+
+## Running Tests
+
+```bash
+# Unit tests (no external dependencies)
+cargo test --lib --all
+
+# Integration tests (requires OVSDB server)
+OVSDB_ADDR=unix:/tmp/ovs-test/db.sock cargo test -- --ignored
+```
+
+## Examples
+
+Examples are located in `rovs-client/examples/`:
+
+| Example | Description |
+|---------|-------------|
+| `ovsdb_transaction` | Basic bridge/port creation and patch ports |
+| `ovsdb_monitor` | Real-time database monitoring |
+| `list_bridges` | High-level client API usage |
+| `add_flow` | OpenFlow flow programming |
+
+Run examples with:
+```bash
+OVSDB_ADDR=unix:/tmp/ovs-test/db.sock cargo run --example <name>
 ```
 
 ## Crate Structure

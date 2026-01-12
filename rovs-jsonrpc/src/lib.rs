@@ -1,3 +1,8 @@
+#![allow(clippy::must_use_candidate)]
+#![allow(clippy::missing_errors_doc)]
+#![allow(clippy::missing_panics_doc)]
+#![allow(clippy::unnecessary_unwrap)]
+
 //! JSON-RPC protocol implementation for OVSDB.
 //!
 //! Provides message types and connection handling for the JSON-RPC 1.0

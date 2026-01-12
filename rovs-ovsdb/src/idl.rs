@@ -117,12 +117,7 @@ impl Idl {
     }
 
     /// Process update for a single row.
-    fn process_row_update(
-        &mut self,
-        table_name: &str,
-        uuid: Uuid,
-        update: &serde_json::Value,
-    ) {
+    fn process_row_update(&mut self, table_name: &str, uuid: Uuid, update: &serde_json::Value) {
         let table = self.tables.entry(table_name.to_owned()).or_default();
 
         if let Some(obj) = update.as_object() {
@@ -149,5 +144,178 @@ impl Idl {
     /// Mark as monitoring (called after successful monitor request).
     pub fn set_monitoring(&mut self) {
         self.state = IdlState::Monitoring;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn new_idl_has_initial_state() {
+        let idl = Idl::new();
+        assert_eq!(idl.state(), IdlState::Initial);
+        assert_eq!(idl.change_seqno(), 0);
+        assert!(idl.schema().is_none());
+    }
+
+    #[test]
+    fn process_update_insert() {
+        let mut idl = Idl::new();
+        idl.tables.insert("Bridge".to_string(), HashMap::new());
+
+        let update = json!({
+            "Bridge": {
+                "11111111-1111-1111-1111-111111111111": {
+                    "new": {"name": "br0", "ports": ["set", []]}
+                }
+            }
+        });
+
+        idl.process_update(&update);
+
+        assert_eq!(idl.change_seqno(), 1);
+
+        let rows: Vec<_> = idl.rows("Bridge").collect();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].get_string("name"), Some("br0"));
+    }
+
+    #[test]
+    fn process_update_delete() {
+        let mut idl = Idl::new();
+        idl.tables.insert("Bridge".to_string(), HashMap::new());
+
+        // First insert a row
+        let insert = json!({
+            "Bridge": {
+                "11111111-1111-1111-1111-111111111111": {
+                    "new": {"name": "br0"}
+                }
+            }
+        });
+        idl.process_update(&insert);
+        assert_eq!(idl.rows("Bridge").count(), 1);
+
+        // Then delete it
+        let delete = json!({
+            "Bridge": {
+                "11111111-1111-1111-1111-111111111111": {
+                    "old": {"name": "br0"}
+                }
+            }
+        });
+        idl.process_update(&delete);
+
+        assert_eq!(idl.rows("Bridge").count(), 0);
+        assert_eq!(idl.change_seqno(), 2);
+    }
+
+    #[test]
+    fn process_update_modify() {
+        let mut idl = Idl::new();
+        idl.tables.insert("Bridge".to_string(), HashMap::new());
+
+        // Insert
+        let insert = json!({
+            "Bridge": {
+                "11111111-1111-1111-1111-111111111111": {
+                    "new": {"name": "br0", "fail_mode": "standalone"}
+                }
+            }
+        });
+        idl.process_update(&insert);
+
+        // Modify
+        let modify = json!({
+            "Bridge": {
+                "11111111-1111-1111-1111-111111111111": {
+                    "old": {"fail_mode": "standalone"},
+                    "new": {"name": "br0", "fail_mode": "secure"}
+                }
+            }
+        });
+        idl.process_update(&modify);
+
+        let rows: Vec<_> = idl.rows("Bridge").collect();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].get_string("fail_mode"), Some("secure"));
+    }
+
+    #[test]
+    fn process_multiple_tables() {
+        let mut idl = Idl::new();
+        idl.tables.insert("Bridge".to_string(), HashMap::new());
+        idl.tables.insert("Port".to_string(), HashMap::new());
+
+        let update = json!({
+            "Bridge": {
+                "11111111-1111-1111-1111-111111111111": {
+                    "new": {"name": "br0"}
+                }
+            },
+            "Port": {
+                "22222222-2222-2222-2222-222222222222": {
+                    "new": {"name": "br0"}
+                }
+            }
+        });
+
+        idl.process_update(&update);
+
+        assert_eq!(idl.rows("Bridge").count(), 1);
+        assert_eq!(idl.rows("Port").count(), 1);
+        assert_eq!(idl.change_seqno(), 1);
+    }
+
+    #[test]
+    fn row_lookup_by_uuid() {
+        let mut idl = Idl::new();
+        idl.tables.insert("Bridge".to_string(), HashMap::new());
+
+        let uuid: Uuid = "11111111-1111-1111-1111-111111111111".parse().unwrap();
+
+        let update = json!({
+            "Bridge": {
+                "11111111-1111-1111-1111-111111111111": {
+                    "new": {"name": "br0"}
+                }
+            }
+        });
+        idl.process_update(&update);
+
+        let row = idl.row("Bridge", &uuid);
+        assert!(row.is_some());
+        assert_eq!(row.unwrap().get_string("name"), Some("br0"));
+
+        let missing_uuid: Uuid = "99999999-9999-9999-9999-999999999999".parse().unwrap();
+        assert!(idl.row("Bridge", &missing_uuid).is_none());
+    }
+
+    #[test]
+    fn state_transitions() {
+        let mut idl = Idl::new();
+        assert_eq!(idl.state(), IdlState::Initial);
+
+        // set_schema should transition to MonitorRequested
+        let schema = crate::DbSchema {
+            name: "Open_vSwitch".to_string(),
+            version: "8.0.0".to_string(),
+            tables: HashMap::new(),
+        };
+        idl.set_schema(schema);
+        assert_eq!(idl.state(), IdlState::MonitorRequested);
+
+        // set_monitoring should transition to Monitoring
+        idl.set_monitoring();
+        assert_eq!(idl.state(), IdlState::Monitoring);
+        assert!(idl.is_monitoring());
+    }
+
+    #[test]
+    fn rows_empty_table() {
+        let idl = Idl::new();
+        assert_eq!(idl.rows("NonExistent").count(), 0);
     }
 }

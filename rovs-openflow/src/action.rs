@@ -1,4 +1,4 @@
-//! OpenFlow actions.
+//! `OpenFlow` actions.
 
 use std::net::Ipv4Addr;
 
@@ -46,9 +46,12 @@ pub enum Action {
     /// Set tunnel ID
     SetTunnelId(u64),
     /// Resubmit to table (Nicira extension)
-    NxResubmit { port: Option<u16>, table: Option<u8> },
+    NxResubmit {
+        port: Option<u16>,
+        table: Option<u8>,
+    },
     /// Learn action (Nicira extension)
-    NxLearn { /* TODO: learn spec */ },
+    NxLearn {/* TODO: learn spec */},
     /// Conntrack action (Nicira extension)
     NxCt {
         flags: u16,

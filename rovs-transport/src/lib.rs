@@ -1,4 +1,4 @@
-//! Transport layer for OVSDB and OpenFlow connections.
+//! Transport layer for OVSDB and `OpenFlow` connections.
 //!
 //! Provides async stream abstractions over:
 //! - Unix domain sockets
