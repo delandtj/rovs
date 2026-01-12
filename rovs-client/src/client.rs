@@ -28,7 +28,8 @@ impl OvsClient {
         let ovsdb_addr: Address = ovsdb.parse()?;
         let openflow_addr: Address = openflow.parse()?;
 
-        // TODO: Actually connect to OVSDB and set up IDL
+        // TODO: Establish OVSDB connection, fetch schema, and populate IDL with initial data.
+        // Currently returns an unconnected IDL - all operations will see empty tables.
         let idl = Idl::new();
 
         Ok(Self {
@@ -50,7 +51,6 @@ impl OvsClient {
 
     /// List all bridges.
     pub async fn list_bridges(&self) -> Result<Vec<Bridge>> {
-        // TODO: Implement using IDL
         let bridges: Vec<Bridge> = self
             .idl
             .rows("Bridge")
@@ -63,10 +63,12 @@ impl OvsClient {
                         .get_string("datapath_type")
                         .unwrap_or_default()
                         .to_owned(),
-                    ports: Vec::new(), // TODO: Parse port references
+                    // TODO: Parse port UUIDs from row.get_set("ports") and resolve to Port structs
+                    ports: Vec::new(),
                     fail_mode: row.get_string("fail_mode").map(|s| s.to_owned()),
                     stp_enable: row.get_bool("stp_enable").unwrap_or(false),
-                    controller: Vec::new(), // TODO: Parse controller references
+                    // TODO: Parse controller UUIDs from row.get_set("controller") and resolve to Controller structs
+                    controller: Vec::new(),
                 }
             })
             .collect();
@@ -85,50 +87,50 @@ impl OvsClient {
 
     /// Create a new bridge.
     pub async fn create_bridge(&self, name: &str) -> Result<Bridge> {
-        // TODO: Implement using transaction
+        // TODO: Create OVSDB transaction to insert Bridge row and mutate Open_vSwitch.bridges
         let _ = name;
-        Err(Error::OperationFailed("not yet implemented".into()))
+        Err(Error::OperationFailed("create_bridge: OVSDB transaction not implemented".into()))
     }
 
     /// Delete a bridge.
     pub async fn delete_bridge(&self, name: &str) -> Result<()> {
-        // TODO: Implement using transaction
+        // TODO: Create OVSDB transaction to delete Bridge row and mutate Open_vSwitch.bridges
         let _ = name;
-        Err(Error::OperationFailed("not yet implemented".into()))
+        Err(Error::OperationFailed("delete_bridge: OVSDB transaction not implemented".into()))
     }
 
     /// Add a port to a bridge.
     pub async fn add_port(&self, bridge: &str, port: &str) -> Result<Port> {
-        // TODO: Implement using transaction
+        // TODO: Create OVSDB transaction to insert Port/Interface rows and mutate Bridge.ports
         let _ = (bridge, port);
-        Err(Error::OperationFailed("not yet implemented".into()))
+        Err(Error::OperationFailed("add_port: OVSDB transaction not implemented".into()))
     }
 
     /// Delete a port from a bridge.
     pub async fn delete_port(&self, bridge: &str, port: &str) -> Result<()> {
-        // TODO: Implement using transaction
+        // TODO: Create OVSDB transaction to delete Port/Interface rows and mutate Bridge.ports
         let _ = (bridge, port);
-        Err(Error::OperationFailed("not yet implemented".into()))
+        Err(Error::OperationFailed("delete_port: OVSDB transaction not implemented".into()))
     }
 
     /// Add a flow to a bridge.
     pub async fn add_flow(&self, bridge: &str, flow: FlowMod) -> Result<()> {
-        // TODO: Get OpenFlow connection for bridge, send flow mod
+        // TODO: Lookup bridge OpenFlow controller address, establish VConn, send flow mod
         let _ = (bridge, flow);
-        Err(Error::OperationFailed("not yet implemented".into()))
+        Err(Error::OperationFailed("add_flow: OpenFlow VConn not implemented".into()))
     }
 
     /// Delete flows from a bridge.
     pub async fn delete_flows(&self, bridge: &str, flow: FlowMod) -> Result<()> {
-        // TODO: Get OpenFlow connection for bridge, send flow mod
+        // TODO: Lookup bridge OpenFlow controller address, establish VConn, send flow mod delete
         let _ = (bridge, flow);
-        Err(Error::OperationFailed("not yet implemented".into()))
+        Err(Error::OperationFailed("delete_flows: OpenFlow VConn not implemented".into()))
     }
 
     /// Dump all flows from a bridge.
     pub async fn dump_flows(&self, bridge: &str) -> Result<Vec<rovs_openflow::Flow>> {
-        // TODO: Get OpenFlow connection for bridge, request flow stats
+        // TODO: Lookup bridge OpenFlow controller address, establish VConn, request flow stats
         let _ = bridge;
-        Err(Error::OperationFailed("not yet implemented".into()))
+        Err(Error::OperationFailed("dump_flows: OpenFlow VConn not implemented".into()))
     }
 }

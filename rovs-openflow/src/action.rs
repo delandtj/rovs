@@ -51,7 +51,11 @@ pub enum Action {
         table: Option<u8>,
     },
     /// Learn action (Nicira extension)
-    NxLearn {/* TODO: learn spec */},
+    ///
+    /// TODO: Add learn_spec fields: idle_timeout, hard_timeout, priority, cookie,
+    /// flags, table_id, fin_idle_timeout, fin_hard_timeout, and flow_mod_specs
+    /// for field assignments and match criteria.
+    NxLearn,
     /// Conntrack action (Nicira extension)
     NxCt {
         flags: u16,

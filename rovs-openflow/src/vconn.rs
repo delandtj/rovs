@@ -94,9 +94,7 @@ impl VConn {
 
     /// Send a flow mod.
     pub async fn send_flow_mod(&mut self, _flow_mod: &FlowMod) -> Result<()> {
-        // TODO: Encode FlowMod to bytes
-        // For now, just a placeholder
-        todo!("FlowMod encoding not yet implemented")
+        todo!("FlowMod encoding: serialize FlowMod struct to OpenFlow wire format bytes")
     }
 
     /// Send an echo request and wait for reply.
