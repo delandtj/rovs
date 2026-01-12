@@ -3,6 +3,41 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+/// JSON-RPC request/response ID.
+///
+/// Can be a number, string, or null. OVSDB uses both numeric IDs (for our requests)
+/// and string IDs (e.g., "echo" for server-initiated echo requests).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum RpcId {
+    /// Numeric ID (used by this client)
+    Number(u64),
+    /// String ID (used by some server requests like "echo")
+    String(String),
+}
+
+impl RpcId {
+    /// Get as u64 if this is a numeric ID.
+    pub fn as_u64(&self) -> Option<u64> {
+        match self {
+            Self::Number(n) => Some(*n),
+            Self::String(_) => None,
+        }
+    }
+}
+
+impl From<u64> for RpcId {
+    fn from(n: u64) -> Self {
+        Self::Number(n)
+    }
+}
+
+impl From<&str> for RpcId {
+    fn from(s: &str) -> Self {
+        Self::String(s.to_owned())
+    }
+}
+
 /// A JSON-RPC message (request, response, or notification).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
@@ -21,8 +56,8 @@ pub struct Request {
     /// The parameters
     pub params: Value,
     /// The request ID (None for notifications)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub id: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub id: Option<RpcId>,
 }
 
 impl Request {
@@ -31,7 +66,7 @@ impl Request {
         Self {
             method: method.into(),
             params,
-            id: Some(id),
+            id: Some(RpcId::Number(id)),
         }
     }
 
@@ -60,25 +95,25 @@ pub struct Response {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<RpcError>,
     /// The request ID this responds to
-    pub id: u64,
+    pub id: RpcId,
 }
 
 impl Response {
     /// Create a success response.
-    pub fn success(id: u64, result: Value) -> Self {
+    pub fn success(id: impl Into<RpcId>, result: Value) -> Self {
         Self {
             result: Some(result),
             error: None,
-            id,
+            id: id.into(),
         }
     }
 
     /// Create an error response.
-    pub fn error(id: u64, error: RpcError) -> Self {
+    pub fn error(id: impl Into<RpcId>, error: RpcError) -> Self {
         Self {
             result: None,
             error: Some(error),
-            id,
+            id: id.into(),
         }
     }
 

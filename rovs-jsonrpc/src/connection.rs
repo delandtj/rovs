@@ -17,7 +17,7 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt, BufWriter};
 
 use rovs_transport::Stream;
 
-use crate::{Error, Message, Request, Response, Result};
+use crate::{Error, Message, Request, Response, Result, RpcId};
 
 /// A JSON-RPC connection over a transport stream.
 ///
@@ -90,15 +90,16 @@ impl Connection {
 
     /// Receive a response, buffering any notifications received in the meantime.
     async fn recv_response(&mut self, expected_id: u64) -> Result<Response> {
+        let expected = RpcId::Number(expected_id);
         loop {
             let msg = self.recv_message().await?;
 
             match msg {
                 Message::Response(resp) => {
-                    if resp.id != expected_id {
+                    if resp.id != expected {
                         return Err(Error::UnexpectedId {
                             expected: expected_id,
-                            got: resp.id,
+                            got: resp.id.as_u64().unwrap_or(0),
                         });
                     }
                     return Ok(resp);
@@ -195,6 +196,11 @@ impl Connection {
     /// Notifications received while waiting for a response are buffered here.
     pub fn has_pending_notifications(&self) -> bool {
         !self.pending_notifications.is_empty()
+    }
+
+    /// Get the count of pending notifications.
+    pub fn pending_notification_count(&self) -> usize {
+        self.pending_notifications.len()
     }
 
     /// Pop the next buffered notification (FIFO order).

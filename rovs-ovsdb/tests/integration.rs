@@ -268,6 +268,9 @@ fn extract_name(row_ref: &rovs_ovsdb::RowRef) -> String {
 
 // Helper function to clean up a test bridge
 async fn cleanup_bridge(client: &mut Client, bridge_name: &str) {
+    // First, process any pending updates to ensure IDL is current
+    let _ = client.run().await;
+
     // Find bridge UUID
     let bridge = client
         .idl()
@@ -309,7 +312,7 @@ async fn cleanup_bridge(client: &mut Client, bridge_name: &str) {
 
         let mut del_txn = Transaction::new("Open_vSwitch");
         del_txn.delete_bridge_uuid(bridge_uuid, &port_uuids, &iface_uuids);
+        // Just commit, don't wait - cleanup doesn't need to verify completion
         let _ = client.commit(&mut del_txn).await;
-        let _ = client.wait().await;
     }
 }

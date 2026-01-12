@@ -319,33 +319,77 @@ impl Client {
     pub async fn wait(&mut self) -> Result<()> {
         use rovs_jsonrpc::Message;
 
+        // First, check for buffered notifications from previous operations
+        while let Some(notification) = self.conn.pop_notification() {
+            if notification.method == "echo" {
+                self.send_echo_reply(&notification.params, notification.id.as_ref()).await?;
+                continue;
+            }
+            if let Some(updated) = self.process_notification(&notification) {
+                if updated {
+                    return Ok(());
+                }
+            }
+        }
+
+        // No buffered updates, wait for new messages
         loop {
             let msg = self.conn.recv_message().await?;
 
             match msg {
                 Message::Request(req) => {
-                    // Server notification
-                    if req.method == "update" || req.method == "update2" || req.method == "update3"
-                    {
-                        if let Some(params) = req.params.as_array() {
-                            if params.len() >= 2 {
-                                self.idl.process_update(&params[1]);
-                                return Ok(());
-                            }
-                        }
-                    }
-                    // Echo request from server
                     if req.method == "echo" {
-                        // Should send echo reply, but we're not handling that yet
-                        tracing::debug!("Received echo request from server");
+                        self.send_echo_reply(&req.params, req.id.as_ref()).await?;
+                        continue;
+                    }
+                    if let Some(updated) = self.process_notification(&req) {
+                        if updated {
+                            return Ok(());
+                        }
                     }
                 }
                 Message::Response(_) => {
-                    // Unexpected response - we weren't expecting one
                     tracing::warn!("Received unexpected response");
                 }
             }
         }
+    }
+
+    /// Process a notification from the server.
+    ///
+    /// Returns `Some(true)` if this was an update notification that was processed,
+    /// `Some(false)` if it was handled but not an update, or `None` if unhandled.
+    fn process_notification(&mut self, req: &rovs_jsonrpc::Request) -> Option<bool> {
+        match req.method.as_str() {
+            "update" | "update2" | "update3" => {
+                if let Some(params) = req.params.as_array() {
+                    if params.len() >= 2 {
+                        self.idl.process_update(&params[1]);
+                        return Some(true);
+                    }
+                }
+                Some(false)
+            }
+            "echo" => {
+                // Server echo request - handled asynchronously
+                tracing::debug!("Received echo request from server");
+                Some(false)
+            }
+            _ => {
+                tracing::debug!("Unknown notification: {}", req.method);
+                None
+            }
+        }
+    }
+
+    /// Send echo reply to server.
+    async fn send_echo_reply(&mut self, params: &Value, id: Option<&rovs_jsonrpc::RpcId>) -> Result<()> {
+        use rovs_jsonrpc::{Message, Response, RpcId};
+
+        let response_id = id.cloned().unwrap_or_else(|| RpcId::String("echo".to_owned()));
+        let response = Response::success(response_id, params.clone());
+        self.conn.send_message(&Message::Response(response)).await?;
+        Ok(())
     }
 
     /// Execute a raw transaction with operations as JSON.
