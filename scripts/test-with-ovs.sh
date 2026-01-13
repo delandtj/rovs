@@ -89,7 +89,7 @@ run_unit_tests() {
 
 run_integration_tests() {
     log_info "Running integration tests..."
-    # --test-threads=1 required: tests share one OVSDB connection and would steal each other's update notifications
+    # --test-threads=1 avoids database-level race conditions (cleanup patterns could match other tests' resources)
     OVSDB_ADDR="tcp:127.0.0.1:$OVSDB_PORT" cargo test -- --ignored --test-threads=1
 }
 
