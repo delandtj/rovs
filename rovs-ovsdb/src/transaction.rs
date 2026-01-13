@@ -567,6 +567,19 @@ impl Transaction {
         self.add_port(bridge_name, port_name, "internal")
     }
 
+    /// Add a system port to a bridge.
+    ///
+    /// System ports represent physical or virtual network interfaces (NICs, veth
+    /// pairs, etc.) that exist in the kernel. The interface must already exist.
+    ///
+    /// # Arguments
+    ///
+    /// * `bridge_name` - Name of the existing bridge
+    /// * `port_name` - Name of the existing kernel interface to attach
+    pub fn add_system_port(&mut self, bridge_name: &str, port_name: &str) -> (RowRef, RowRef) {
+        self.add_port(bridge_name, port_name, "system")
+    }
+
     /// Add a VLAN access port (internal type with a VLAN tag).
     ///
     /// Creates an internal port with the specified VLAN ID. Traffic on this
@@ -685,6 +698,109 @@ impl Transaction {
             json!({
                 "name": p2_name,
                 "interfaces": iface2_ref.to_json()
+            }),
+        );
+
+        // Add port2 to bridge2
+        self.mutate_by_name(
+            "Bridge",
+            bridge2,
+            vec![json!(["ports", "insert", port2_ref.to_json()])],
+        );
+
+        (port1_ref, iface1_ref, port2_ref, iface2_ref)
+    }
+
+    /// Create a patch port pair with VLAN trunk configuration.
+    ///
+    /// Like [`add_patch_ports`](Self::add_patch_ports), but configures the ports
+    /// as VLAN trunks that only allow specified VLANs to pass through.
+    ///
+    /// # Arguments
+    ///
+    /// * `bridge1` - First bridge name
+    /// * `bridge2` - Second bridge name
+    /// * `vlans` - List of VLAN IDs to allow (1-4094)
+    /// * `port1_name` - Optional custom name for first patch port
+    /// * `port2_name` - Optional custom name for second patch port
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // Allow only VLANs 100 and 200 between bridges
+    /// txn.add_trunk_patch_ports("br-int", "br-ext", &[100, 200], None, None);
+    /// ```
+    pub fn add_trunk_patch_ports(
+        &mut self,
+        bridge1: &str,
+        bridge2: &str,
+        vlans: &[u16],
+        port1_name: Option<&str>,
+        port2_name: Option<&str>,
+    ) -> (RowRef, RowRef, RowRef, RowRef) {
+        // Use provided names or generate defaults
+        let p1_name = port1_name
+            .map(|s| s.to_owned())
+            .unwrap_or_else(|| format!("patch-{}-to-{}", bridge1, bridge2));
+        let p2_name = port2_name
+            .map(|s| s.to_owned())
+            .unwrap_or_else(|| format!("patch-{}-to-{}", bridge2, bridge1));
+
+        // Format VLAN list for OVSDB set encoding
+        let vlan_set = if vlans.len() == 1 {
+            // Single value doesn't need set encoding
+            json!(vlans[0])
+        } else {
+            // Multiple values need ["set", [...]]
+            json!(["set", vlans])
+        };
+
+        // Create interface 1 (patch type with peer option)
+        let iface1_ref = self.insert(
+            "Interface",
+            json!({
+                "name": p1_name,
+                "type": "patch",
+                "options": ["map", [["peer", p2_name]]]
+            }),
+        );
+
+        // Create port 1 with trunk configuration
+        let port1_ref = self.insert(
+            "Port",
+            json!({
+                "name": p1_name,
+                "interfaces": iface1_ref.to_json(),
+                "vlan_mode": "trunk",
+                "trunks": vlan_set
+            }),
+        );
+
+        // Add port1 to bridge1
+        self.mutate_by_name(
+            "Bridge",
+            bridge1,
+            vec![json!(["ports", "insert", port1_ref.to_json()])],
+        );
+
+        // Create interface 2 (patch type with peer option)
+        let iface2_ref = self.insert(
+            "Interface",
+            json!({
+                "name": p2_name,
+                "type": "patch",
+                "options": ["map", [["peer", p1_name]]]
+            }),
+        );
+
+        // Create port 2 with trunk configuration
+        let port2_ref = self.insert(
+            "Port",
+            json!({
+                "name": p2_name,
+                "interfaces": iface2_ref.to_json(),
+                "vlan_mode": "trunk",
+                "trunks": vlan_set
             }),
         );
 
@@ -991,5 +1107,48 @@ mod tests {
 
         assert_eq!(txn.operations()[0]["op"], "comment");
         assert_eq!(txn.operations()[0]["comment"], "Test transaction");
+    }
+
+    #[test]
+    fn add_system_port_uses_system_type() {
+        let mut txn = Transaction::new("Open_vSwitch");
+        txn.add_system_port("br0", "eth0");
+
+        // Interface, Port, Mutate
+        assert_eq!(txn.operations().len(), 3);
+
+        // Interface should have type "system"
+        let iface_op = &txn.operations()[0];
+        assert_eq!(iface_op["row"]["type"], "system");
+        assert_eq!(iface_op["row"]["name"], "eth0");
+    }
+
+    #[test]
+    fn add_trunk_patch_ports_single_vlan() {
+        let mut txn = Transaction::new("Open_vSwitch");
+        txn.add_trunk_patch_ports("br-int", "br-ext", &[100], None, None);
+
+        // 2 interfaces, 2 ports, 2 mutates
+        assert_eq!(txn.operations().len(), 6);
+
+        // Check port has vlan_mode and trunks
+        let port1 = &txn.operations()[1];
+        assert_eq!(port1["row"]["vlan_mode"], "trunk");
+        assert_eq!(port1["row"]["trunks"], 100); // Single value, no set encoding
+
+        let port2 = &txn.operations()[4];
+        assert_eq!(port2["row"]["vlan_mode"], "trunk");
+        assert_eq!(port2["row"]["trunks"], 100);
+    }
+
+    #[test]
+    fn add_trunk_patch_ports_multiple_vlans() {
+        let mut txn = Transaction::new("Open_vSwitch");
+        txn.add_trunk_patch_ports("br-int", "br-ext", &[100, 200, 300], None, None);
+
+        // Check port has set-encoded trunks
+        let port1 = &txn.operations()[1];
+        assert_eq!(port1["row"]["vlan_mode"], "trunk");
+        assert_eq!(port1["row"]["trunks"], json!(["set", [100, 200, 300]]));
     }
 }
