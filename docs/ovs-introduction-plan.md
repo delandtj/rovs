@@ -16,7 +16,7 @@ Transform OVS Python OVSDB + OpenFlow functionality into a Rust library for netw
 ├─────────────────────────────────────────────────────────────┤
 │  OVSDB Layer                │  OpenFlow Layer              │
 │  ├─ Idl (replica)           │  ├─ VConn (connection)       │
-│  ├─ Transaction             │  ├─ FlowMod (add/del/mod)    │
+│  ├─ Transaction             │  ├─ Flow (add/del/mod)       │
 │  ├─ Row/Table               │  ├─ Match/Actions            │
 │  └─ Schema                  │  └─ Bundle (atomic ops)      │
 ├─────────────────────────────┴──────────────────────────────┤
@@ -157,17 +157,17 @@ Port from `include/openvswitch/ofp-flow.h` and `lib/ofp-flow.c`:
 - `PushVlan`, `PopVlan`
 - `Group(id)`, `Meter(id)`
 
-**FlowMod struct**:
+**Flow struct**:
 ```rust
-struct FlowMod {
-    command: FlowModCommand,  // Add, Modify, Delete
+struct Flow {
+    command: FlowCommand,  // Add, Modify, Delete
     table_id: u8,
     priority: u16,
     cookie: u64,
     match_fields: Match,
     actions: Vec<Action>,
     timeouts: Timeouts,
-    flags: FlowModFlags,
+    flags: FlowFlags,
 }
 ```
 
@@ -181,7 +181,7 @@ Port `python/ovs/flow/ofp.py`:
 Port from `include/openvswitch/vconn.h` concepts:
 - `VConn` - OpenFlow connection to switch
 - Protocol version negotiation (OF 1.0-1.5)
-- `send_flow_mod()`, `dump_flows()`, `del_flows()`
+- `send_flow()`, `dump_flows()`, `del_flows()`
 - Bundle support for atomic operations (OF 1.3+)
 
 ---
@@ -205,9 +205,9 @@ impl OvsClient {
     pub async fn add_port(&self, bridge: &str, port: &str) -> Result<Port>;
 
     // Flow operations
-    pub async fn add_flow(&self, bridge: &str, flow: FlowMod) -> Result<()>;
+    pub async fn add_flow(&self, bridge: &str, flow: Flow) -> Result<()>;
     pub async fn del_flows(&self, bridge: &str, match_: Match) -> Result<()>;
-    pub async fn dump_flows(&self, bridge: &str) -> Result<Vec<Flow>>;
+    pub async fn dump_flows(&self, bridge: &str) -> Result<Vec<FlowStats>>;
 }
 ```
 

@@ -29,8 +29,8 @@
 //!     }
 //!
 //!     // Add a flow
-//!     use rovs_openflow::{FlowMod, Match, ActionList};
-//!     let flow = FlowMod::add()
+//!     use rovs_openflow::{Flow, Match, ActionList};
+//!     let flow = Flow::add()
 //!         .table(0)
 //!         .priority(100)
 //!         .match_fields(Match::new().in_port(1))
@@ -51,7 +51,7 @@ pub use error::Error;
 pub use topology::{Bridge, Interface, Port};
 
 // Re-export commonly used types from other crates
-pub use rovs_openflow::{ActionList, FlowMod, Match};
+pub use rovs_openflow::{ActionList, Flow, Match};
 pub use rovs_ovsdb::{Transaction, TransactionStatus};
 
 pub type Result<T> = std::result::Result<T, Error>;

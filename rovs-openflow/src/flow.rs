@@ -2,9 +2,9 @@
 
 use crate::{ActionList, Match};
 
-/// A flow entry.
+/// Flow statistics read from the switch.
 #[derive(Debug, Clone)]
-pub struct Flow {
+pub struct FlowStats {
     /// Table ID
     pub table_id: u8,
     /// Priority (higher = more specific)
@@ -25,10 +25,10 @@ pub struct Flow {
     pub byte_count: u64,
 }
 
-/// Flow modification command.
+/// Flow command type.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
-pub enum FlowModCommand {
+pub enum FlowCommand {
     /// Add a new flow
     Add = 0,
     /// Modify matching flows
@@ -41,9 +41,9 @@ pub enum FlowModCommand {
     DeleteStrict = 4,
 }
 
-/// Flow modification flags.
+/// Flow flags.
 #[derive(Debug, Clone, Copy, Default)]
-pub struct FlowModFlags {
+pub struct FlowFlags {
     /// Send flow removed message
     pub send_flow_rem: bool,
     /// Check for overlapping entries
@@ -56,11 +56,11 @@ pub struct FlowModFlags {
     pub no_byte_counts: bool,
 }
 
-/// A flow modification request.
+/// A flow entry to add, modify, or delete.
 #[derive(Debug, Clone)]
-pub struct FlowMod {
+pub struct Flow {
     /// Command (add, modify, delete)
-    pub command: FlowModCommand,
+    pub command: FlowCommand,
     /// Table ID (0xff for all tables on delete)
     pub table_id: u8,
     /// Priority
@@ -78,7 +78,7 @@ pub struct FlowMod {
     /// Hard timeout
     pub hard_timeout: u16,
     /// Flags
-    pub flags: FlowModFlags,
+    pub flags: FlowFlags,
     /// Output port (for delete commands)
     pub out_port: Option<u32>,
     /// Output group (for delete commands)
@@ -87,11 +87,11 @@ pub struct FlowMod {
     pub buffer_id: Option<u32>,
 }
 
-impl FlowMod {
+impl Flow {
     /// Create a new flow add command.
     pub fn add() -> Self {
         Self {
-            command: FlowModCommand::Add,
+            command: FlowCommand::Add,
             table_id: 0,
             priority: 0,
             cookie: 0,
@@ -100,7 +100,7 @@ impl FlowMod {
             actions: ActionList::new(),
             idle_timeout: 0,
             hard_timeout: 0,
-            flags: FlowModFlags::default(),
+            flags: FlowFlags::default(),
             out_port: None,
             out_group: None,
             buffer_id: None,
@@ -110,7 +110,7 @@ impl FlowMod {
     /// Create a new flow delete command.
     pub fn delete() -> Self {
         Self {
-            command: FlowModCommand::Delete,
+            command: FlowCommand::Delete,
             table_id: 0xff, // All tables
             priority: 0,
             cookie: 0,
@@ -119,7 +119,7 @@ impl FlowMod {
             actions: ActionList::new(),
             idle_timeout: 0,
             hard_timeout: 0,
-            flags: FlowModFlags::default(),
+            flags: FlowFlags::default(),
             out_port: None,
             out_group: None,
             buffer_id: None,

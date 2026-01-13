@@ -5,7 +5,7 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 use rovs_transport::{Address, Stream};
 
-use crate::{Error, FlowMod, Header, Message, MessageType, Result, Version};
+use crate::{Error, Flow, Header, Message, MessageType, Result, Version};
 
 /// An OpenFlow virtual connection.
 pub struct VConn {
@@ -92,9 +92,9 @@ impl VConn {
         })
     }
 
-    /// Send a flow mod.
-    pub async fn send_flow_mod(&mut self, _flow_mod: &FlowMod) -> Result<()> {
-        todo!("FlowMod encoding: serialize FlowMod struct to OpenFlow wire format bytes")
+    /// Send a flow to the switch.
+    pub async fn send_flow(&mut self, _flow: &Flow) -> Result<()> {
+        todo!("Flow encoding: serialize Flow struct to OpenFlow wire format bytes")
     }
 
     /// Send an echo request and wait for reply.

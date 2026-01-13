@@ -28,7 +28,7 @@ mod vconn;
 
 pub use action::{Action, ActionList};
 pub use error::Error;
-pub use flow::{Flow, FlowMod, FlowModCommand};
+pub use flow::{Flow, FlowCommand, FlowFlags, FlowStats};
 pub use match_fields::Match;
 pub use message::{Header, Message, MessageType};
 pub use vconn::VConn;

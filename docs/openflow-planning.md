@@ -124,20 +124,20 @@ pub enum OfpInstruction {
 }
 ```
 
-**2.4 Flow Mod**
+**2.4 Flow**
 ```rust
-pub struct FlowMod {
+pub struct Flow {
     pub cookie: u64,
     pub cookie_mask: u64,
     pub table_id: u8,
-    pub command: FlowModCommand,
+    pub command: FlowCommand,
     pub idle_timeout: u16,
     pub hard_timeout: u16,
     pub priority: u16,
     pub buffer_id: u32,
     pub out_port: u32,
     pub out_group: u32,
-    pub flags: FlowModFlags,
+    pub flags: FlowFlags,
     pub match_fields: Vec<OxmField>,
     pub instructions: Vec<OfpInstruction>,
 }
@@ -339,7 +339,7 @@ Study these for implementation details:
 
 1. **Message framing** - Read/write OpenFlow messages
 2. **Hello/Features** - Handshake with switch
-3. **Flow Mod** - Add flows (most important operation)
+3. **Flow** - Add flows (most important operation)
 4. **Packet In/Out** - Reactive flow programming
 5. **Port Status** - Track port changes
 6. **Groups/Meters** - Advanced features
@@ -405,7 +405,7 @@ rovs-openflow/
 │   │   ├── hello.rs        # Hello message
 │   │   ├── features.rs     # Features request/reply
 │   │   ├── error.rs        # Error message
-│   │   ├── flow_mod.rs     # Flow modification
+│   │   ├── flow.rs         # Flow add/modify/delete
 │   │   ├── packet.rs       # Packet in/out
 │   │   ├── port.rs         # Port status
 │   │   ├── group.rs        # Group mod

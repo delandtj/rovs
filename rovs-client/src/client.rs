@@ -3,7 +3,7 @@
 use rovs_ovsdb::Idl;
 use rovs_transport::Address;
 
-use crate::{Bridge, Error, FlowMod, Port, Result};
+use crate::{Bridge, Error, Flow, Port, Result};
 
 /// High-level OVS client.
 ///
@@ -114,21 +114,21 @@ impl OvsClient {
     }
 
     /// Add a flow to a bridge.
-    pub async fn add_flow(&self, bridge: &str, flow: FlowMod) -> Result<()> {
-        // TODO: Lookup bridge OpenFlow controller address, establish VConn, send flow mod
+    pub async fn add_flow(&self, bridge: &str, flow: Flow) -> Result<()> {
+        // TODO: Lookup bridge OpenFlow controller address, establish VConn, send flow
         let _ = (bridge, flow);
         Err(Error::OperationFailed("add_flow: OpenFlow VConn not implemented".into()))
     }
 
     /// Delete flows from a bridge.
-    pub async fn delete_flows(&self, bridge: &str, flow: FlowMod) -> Result<()> {
-        // TODO: Lookup bridge OpenFlow controller address, establish VConn, send flow mod delete
+    pub async fn delete_flows(&self, bridge: &str, flow: Flow) -> Result<()> {
+        // TODO: Lookup bridge OpenFlow controller address, establish VConn, send flow delete
         let _ = (bridge, flow);
         Err(Error::OperationFailed("delete_flows: OpenFlow VConn not implemented".into()))
     }
 
     /// Dump all flows from a bridge.
-    pub async fn dump_flows(&self, bridge: &str) -> Result<Vec<rovs_openflow::Flow>> {
+    pub async fn dump_flows(&self, bridge: &str) -> Result<Vec<rovs_openflow::FlowStats>> {
         // TODO: Lookup bridge OpenFlow controller address, establish VConn, request flow stats
         let _ = bridge;
         Err(Error::OperationFailed("dump_flows: OpenFlow VConn not implemented".into()))
