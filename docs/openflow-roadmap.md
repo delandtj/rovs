@@ -23,74 +23,216 @@ This document tracks the implementation status and roadmap for OpenFlow support 
 
 ## Implementation Phases
 
-### Phase 1: Wire Primitives
+### Phase 1: OXM Encoding
 
-Foundation for all encoding. Each step is independently testable.
+Foundation - encode individual match fields to wire format.
 
-1. **OXM TLV encoding** (`oxm.rs`)
-   - `OxmField::encode(&self, value: &[u8], mask: Option<&[u8]>) -> Vec<u8>`
-   - Unit tests with known byte patterns from Wireshark captures
-   - Fields: InPort, EthDst, EthSrc, EthType, VlanVid, Ipv4Src, Ipv4Dst, IpProto, TcpSrc, TcpDst
+#### 1.1 OXM Header Builder
+- [ ] `oxm.rs`: Add `OxmHeader` struct with class, field, hasmask, length
+- [ ] `OxmHeader::encode(&self) -> [u8; 4]` - write 4-byte header
+- [ ] Unit test: verify header bytes for known fields
 
-2. **Action encoding** (`action.rs`)
-   - `Action::encode(&self, version: Version) -> Vec<u8>`
-   - Start with: Output, SetField, PushVlan, PopVlan, GotoTable
-   - OF 1.3 action format (type, length, payload)
+#### 1.2 Fixed-Size Field Encoding
+- [ ] `encode_u8(class, field, value) -> Vec<u8>` (1 byte: IpProto, IpDscp)
+- [ ] `encode_u16(class, field, value) -> Vec<u8>` (2 bytes: EthType, TcpSrc, TcpDst, UdpSrc, UdpDst, VlanVid)
+- [ ] `encode_u32(class, field, value) -> Vec<u8>` (4 bytes: InPort, Ipv4Src, Ipv4Dst)
+- [ ] `encode_u64(class, field, value) -> Vec<u8>` (8 bytes: Metadata, TunnelId)
+- [ ] `encode_mac(class, field, value) -> Vec<u8>` (6 bytes: EthSrc, EthDst)
+- [ ] Unit tests for each size
 
-3. **Unit tests**
-   - Compare encoded bytes against known-good captures
-   - Test round-trip encode/decode where applicable
+#### 1.3 Masked Field Encoding
+- [ ] `encode_u32_masked(class, field, value, mask) -> Vec<u8>` (8 bytes: Ipv4 with prefix)
+- [ ] `encode_mac_masked(class, field, value, mask) -> Vec<u8>` (12 bytes)
+- [ ] Helper: `prefix_to_mask(prefix_len: u8) -> u32` for IPv4
+- [ ] Unit tests: `/24` prefix → `0xffffff00` mask
 
-### Phase 2: Match & FlowMod Encoding
+#### 1.4 OxmField Trait
+- [ ] Create `trait OxmEncode` with `fn encode(&self) -> Vec<u8>`
+- [ ] Implement for each field type in `Match` struct
+- [ ] Unit tests comparing to Wireshark captures
 
-Building on Phase 1 primitives.
+### Phase 2: Action Encoding
 
-4. **Match encoding** (`match_fields.rs`)
-   - `Match::encode(&self) -> Vec<u8>`
-   - Iterate fields, call OXM encode, build OXM list
-   - Handle prerequisite fields (eth_type before ipv4_src, etc.)
+Encode individual actions to wire format.
 
-5. **Instruction encoding** (new `instruction.rs`)
-   - OF 1.3 instructions: ApplyActions, WriteActions, GotoTable, WriteMetadata
-   - `ActionList::to_instructions(&self) -> Vec<u8>`
+#### 2.1 Action Type Constants
+- [ ] `action.rs`: Add `ActionType` enum with wire values
+- [ ] Output=0, SetField=25, PushVlan=17, PopVlan=18, Group=22, etc.
 
-6. **FlowMod encoding** (`flow.rs`)
-   - `FlowMod::encode(&self, version: Version) -> Vec<u8>`
-   - Complete message: header + flowmod fields + match + instructions
+#### 2.2 Simple Actions (fixed size)
+- [ ] `Action::Output` → 16 bytes (type=0, len=16, port=u32, max_len=u16, pad=6)
+- [ ] `Action::PopVlan` → 8 bytes (type=18, len=8, pad=4)
+- [ ] `Action::DecTtl` → 8 bytes (type=24, len=8, pad=4)
+- [ ] `Action::Group` → 8 bytes (type=22, len=8, group_id=u32)
+- [ ] Unit tests for each
 
-### Phase 3: Integration Testing
+#### 2.3 PushVlan Action
+- [ ] `Action::PushVlan(ethertype)` → 8 bytes (type=17, len=8, ethertype=u16, pad=2)
+- [ ] Unit test
 
-7. **VConn integration**
-   - Implement `send_flow_mod()` using Phase 2 encoding
-   - Add timeout and error handling
+#### 2.4 SetField Action (variable size)
+- [ ] `Action::SetEthSrc/Dst` → 16 bytes (type=25, len=16, oxm_header+mac+pad)
+- [ ] `Action::SetVlanVid` → 16 bytes
+- [ ] `Action::SetIpv4Src/Dst` → 16 bytes
+- [ ] `Action::SetTpSrc/Dst` → 16 bytes (TCP/UDP port)
+- [ ] Uses OXM encoding from Phase 1
+- [ ] Unit tests
 
-8. **Test against OVS**
-   - Container with ovs-vswitchd (privileged mode)
-   - Add flow via rovs, verify with `ovs-ofctl dump-flows`
-   - Delete flow, verify removed
+#### 2.5 ActionList Encoding
+- [ ] `ActionList::encode(&self) -> Vec<u8>` - concatenate all actions
+- [ ] Ensure 8-byte alignment with padding
+- [ ] Unit test with multiple actions
 
-9. **Flow dump** (multipart)
-   - `MultipartRequest::FlowStats`
-   - Parse `MultipartReply` with flow entries
-   - Decode match fields and actions back to structs
+### Phase 3: Match Encoding
 
-### Phase 4: Advanced Features
+Encode complete match structure.
 
-10. **Nicira extensions**
-    - `NxResubmit`, `NxCt`, `NxLearn`
-    - Vendor action encoding (experimenter type)
+#### 3.1 Match Header (OF 1.3 OXM format)
+- [ ] `match_fields.rs`: Add `MatchType` enum (Standard=0, OXM=1)
+- [ ] Match header: type=1 (OXM), length=u16
+- [ ] Padding to 8-byte boundary
 
-11. **Group tables**
-    - `GroupMod` message
-    - Bucket encoding with actions
+#### 3.2 Field Prerequisite Ordering
+- [ ] Define prerequisite map: `ipv4_src` requires `eth_type=0x0800`
+- [ ] `tcp_src` requires `ip_proto=6`
+- [ ] Auto-insert prerequisites if missing
+- [ ] Or error if inconsistent
 
-12. **Meters**
-    - `MeterMod` message
-    - Band encoding
+#### 3.3 Match::encode()
+- [ ] Iterate `Match` fields in correct order
+- [ ] Call OXM encode for each non-None field
+- [ ] Build match header + OXM list + padding
+- [ ] `fn encode(&self) -> Vec<u8>`
+- [ ] Unit tests: empty match, single field, multiple fields
 
-13. **Table features**
-    - Query switch capabilities
-    - Match/action support detection
+### Phase 4: Instruction Encoding
+
+OF 1.3 instructions wrap actions.
+
+#### 4.1 Instruction Types
+- [ ] Create `instruction.rs`
+- [ ] `InstructionType` enum: GotoTable=1, WriteMetadata=2, WriteActions=3, ApplyActions=4, Clear=5, Meter=6
+
+#### 4.2 GotoTable Instruction
+- [ ] 8 bytes: type=1, len=8, table_id=u8, pad=3
+- [ ] Unit test
+
+#### 4.3 WriteMetadata Instruction
+- [ ] 24 bytes: type=2, len=24, pad=4, metadata=u64, mask=u64
+- [ ] Unit test
+
+#### 4.4 ApplyActions Instruction
+- [ ] Variable: type=4, len=variable, pad=4, actions...
+- [ ] Wraps `ActionList::encode()`
+- [ ] Unit test
+
+#### 4.5 WriteActions Instruction
+- [ ] Same format as ApplyActions but type=3
+- [ ] Unit test
+
+#### 4.6 InstructionList Encoding
+- [ ] `InstructionList::encode(&self) -> Vec<u8>`
+- [ ] Concatenate instructions in order
+- [ ] Unit test
+
+### Phase 5: FlowMod Encoding
+
+Complete FlowMod message.
+
+#### 5.1 FlowMod Fixed Fields
+- [ ] `flow.rs`: Add `FlowMod::encode_fixed(&self) -> [u8; 40]`
+- [ ] cookie(8) + cookie_mask(8) + table_id(1) + command(1) + idle_timeout(2) + hard_timeout(2) + priority(2) + buffer_id(4) + out_port(4) + out_group(4) + flags(2) + pad(2)
+- [ ] Unit test
+
+#### 5.2 FlowMod::encode()
+- [ ] Combine: fixed fields + match + instructions
+- [ ] Calculate total length for OF header
+- [ ] `fn encode(&self, version: Version) -> Vec<u8>`
+- [ ] Unit test
+
+#### 5.3 Complete Message with Header
+- [ ] `FlowMod::to_message(&self, xid: u32) -> Message`
+- [ ] Prepend 8-byte OF header
+- [ ] Unit test: verify complete message bytes
+
+### Phase 6: VConn Integration
+
+Wire up encoding to connection.
+
+#### 6.1 send_flow_mod()
+- [ ] `vconn.rs`: Implement `send_flow_mod()` using `FlowMod::to_message()`
+- [ ] Remove `todo!()`
+
+#### 6.2 Error Handling
+- [ ] Parse OF error reply (type=1)
+- [ ] Map error codes to `Error::OfError`
+- [ ] Return meaningful error on flow add failure
+
+#### 6.3 Barrier After FlowMod
+- [ ] `send_flow_mod_sync()` - send flowmod + barrier, wait for barrier reply
+- [ ] Ensures flow is installed before returning
+
+### Phase 7: Integration Tests
+
+Test against real OVS.
+
+#### 7.1 Container Setup
+- [ ] Update `Containerfile` for privileged mode with vswitchd
+- [ ] Add `scripts/test-with-ovs.sh openflow` mode
+- [ ] Create bridge in container for flow tests
+
+#### 7.2 Add Flow Test
+- [ ] Connect to OVS OpenFlow port (6653)
+- [ ] Add simple flow: `in_port=1 actions=output:2`
+- [ ] Verify with `ovs-ofctl dump-flows`
+- [ ] `#[ignore = "requires ovs-vswitchd"]`
+
+#### 7.3 Delete Flow Test
+- [ ] Add flow, then delete with `FlowModCommand::Delete`
+- [ ] Verify flow removed
+
+#### 7.4 Flow with Match Test
+- [ ] Add flow: `ip,nw_dst=10.0.0.0/24 actions=output:1`
+- [ ] Verify match fields correct in dump
+
+### Phase 8: Flow Dump (Decode)
+
+Read flows back from switch.
+
+#### 8.1 Multipart Request
+- [ ] `MultipartRequest::FlowStats` encoding
+- [ ] Send request, receive reply
+
+#### 8.2 OXM Decoding
+- [ ] `OxmHeader::decode(bytes) -> (OxmHeader, &[u8])`
+- [ ] Decode value bytes based on field type
+- [ ] Build `Match` struct from OXM list
+
+#### 8.3 Action Decoding
+- [ ] `Action::decode(bytes) -> (Action, usize)`
+- [ ] Handle each action type
+- [ ] Build `ActionList`
+
+#### 8.4 FlowStats Parsing
+- [ ] Parse flow stats reply body
+- [ ] Return `Vec<Flow>` with match, actions, counters
+
+### Phase 9: Nicira Extensions (Future)
+
+For advanced OVS features.
+
+#### 9.1 Vendor Action Header
+- [ ] Experimenter action type (0xffff)
+- [ ] Nicira vendor ID: 0x00002320
+
+#### 9.2 NxResubmit
+- [ ] Subtype 14, encode port + table
+
+#### 9.3 NxCt (Connection Tracking)
+- [ ] Subtype 35, encode flags + zone + table + actions
+
+#### 9.4 NxLearn
+- [ ] Subtype 16, complex flow_mod_specs encoding
 
 ## Testing Strategy
 
