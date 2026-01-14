@@ -46,9 +46,32 @@ Foundation - encode individual match fields to wire format.
 - [ ] Helper: `prefix_to_mask(prefix_len: u8) -> u32` for IPv4
 - [ ] Unit tests: `/24` prefix → `0xffffff00` mask
 
-#### 1.4 OxmField Trait
+#### 1.4 NXM Field Encoding (Nicira Extensions)
+
+NXM uses same TLV format as OXM but with class 0x0000 (NXM_OF_*) or 0x0001 (NXM_NX_*).
+
+- [ ] Add `NxmField` enum with Nicira field IDs
+- [ ] Registers: `NXM_NX_REG0-15` (field 0-15, class 0x0001, 4 bytes each)
+- [ ] `encode_reg(reg_num: u8, value: u32) -> Vec<u8>`
+- [ ] `encode_reg_masked(reg_num: u8, value: u32, mask: u32) -> Vec<u8>` (for partial matches)
+- [ ] Tunnel: `NXM_NX_TUN_ID` (field 16, 8 bytes)
+- [ ] Tunnel endpoints: `NXM_NX_TUN_IPV4_SRC/DST` (fields 31/32, 4 bytes)
+- [ ] Connection tracking:
+  - [ ] `NXM_NX_CT_STATE` (field 105, 4 bytes, bitmask: +trk, +new, +est, etc.)
+  - [ ] `NXM_NX_CT_ZONE` (field 106, 2 bytes)
+  - [ ] `NXM_NX_CT_MARK` (field 107, 4 bytes)
+  - [ ] `NXM_NX_CT_LABEL` (field 108, 16 bytes)
+- [ ] Packet mark: `NXM_NX_PKT_MARK` (field 33, 4 bytes)
+- [ ] Unit tests for each field type
+
+#### 1.5 Extended Registers (xxreg)
+- [ ] `NXM_NX_XXREG0-3` (128-bit registers, fields 111-114)
+- [ ] `encode_xxreg(reg_num: u8, value: u128) -> Vec<u8>`
+- [ ] Useful for IPv6 addresses or large metadata
+
+#### 1.6 OxmField Trait
 - [ ] Create `trait OxmEncode` with `fn encode(&self) -> Vec<u8>`
-- [ ] Implement for each field type in `Match` struct
+- [ ] Implement for both OXM (OpenFlow Basic) and NXM fields
 - [ ] Unit tests comparing to Wireshark captures
 
 ### Phase 2: Action Encoding
@@ -78,7 +101,23 @@ Encode individual actions to wire format.
 - [ ] Uses OXM encoding from Phase 1
 - [ ] Unit tests
 
-#### 2.5 ActionList Encoding
+#### 2.5 NXM Register Actions (Nicira Extensions)
+
+Actions to load/move values into registers.
+
+- [ ] `NxLoad` - load immediate value into register/field
+  - [ ] `load:value->NXM_NX_REG0[0..31]` format
+  - [ ] Encode: vendor action (0xffff) + Nicira ID + subtype 7
+  - [ ] Fields: ofs_nbits (start bit, num bits), dst (NXM header), value
+- [ ] `NxMove` - copy bits between fields
+  - [ ] `move:NXM_OF_ETH_SRC->NXM_NX_REG0` format
+  - [ ] Subtype 6
+  - [ ] Fields: n_bits, src_ofs, dst_ofs, src, dst
+- [ ] `NxSetField` - Nicira version of SetField for NXM fields
+  - [ ] Subtype 7 (same as load but different encoding)
+- [ ] Unit tests for each
+
+#### 2.6 ActionList Encoding
 - [ ] `ActionList::encode(&self) -> Vec<u8>` - concatenate all actions
 - [ ] Ensure 8-byte alignment with padding
 - [ ] Unit test with multiple actions
