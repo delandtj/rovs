@@ -2,8 +2,21 @@
 
 use std::net::{Ipv4Addr, Ipv6Addr};
 
+use crate::oxm::{self, OxmClass, OxmField};
+
 /// MAC address type.
 pub type MacAddr = [u8; 6];
+
+/// OpenFlow match type (OF 1.2+).
+#[allow(dead_code)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u16)]
+pub enum MatchType {
+    /// Standard match (deprecated in OF 1.2+)
+    Standard = 0,
+    /// OXM (OpenFlow Extensible Match)
+    Oxm = 1,
+}
 
 /// Match fields for flow matching.
 ///
@@ -207,5 +220,930 @@ impl Match {
             && self.udp_src.is_none()
             && self.udp_dst.is_none()
             && self.tunnel_id.is_none()
+    }
+
+    /// Decode a match from OpenFlow wire format.
+    ///
+    /// Returns the decoded match and the total number of bytes consumed
+    /// (including padding to 8-byte boundary).
+    #[allow(clippy::too_many_lines)]
+    pub fn decode(data: &[u8]) -> crate::Result<(Self, usize)> {
+        if data.len() < 4 {
+            return Err(crate::Error::Parse("match header too short".into()));
+        }
+
+        let match_type = u16::from_be_bytes([data[0], data[1]]);
+        let match_len = u16::from_be_bytes([data[2], data[3]]) as usize;
+
+        if match_type != MatchType::Oxm as u16 {
+            return Err(crate::Error::Parse(format!(
+                "unsupported match type: {match_type}"
+            )));
+        }
+
+        if data.len() < match_len {
+            return Err(crate::Error::Parse("match data truncated".into()));
+        }
+
+        let mut m = Match::new();
+        let oxm_data = &data[4..match_len];
+        let mut offset = 0;
+
+        while offset + 4 <= oxm_data.len() {
+            let header = u32::from_be_bytes([
+                oxm_data[offset],
+                oxm_data[offset + 1],
+                oxm_data[offset + 2],
+                oxm_data[offset + 3],
+            ]);
+
+            let oxm_class = (header >> 16) as u16;
+            let field = ((header >> 9) & 0x7f) as u8;
+            let has_mask = ((header >> 8) & 1) != 0;
+            let length = (header & 0xff) as usize;
+
+            offset += 4; // Skip header
+
+            if offset + length > oxm_data.len() {
+                break; // Not enough data
+            }
+
+            let value = &oxm_data[offset..offset + length];
+            let value_len = if has_mask { length / 2 } else { length };
+
+            // Decode based on class and field
+            if oxm_class == OxmClass::OpenflowBasic as u16 {
+                Self::decode_oxm_field(&mut m, field, has_mask, value, value_len);
+            } else if oxm_class == OxmClass::Nxm1 as u16 {
+                Self::decode_nxm_field(&mut m, field, has_mask, value, value_len);
+            }
+            // Skip unknown classes
+
+            offset += length;
+        }
+
+        // Calculate padded length (8-byte boundary)
+        let padded_len = (match_len + 7) & !7;
+
+        Ok((m, padded_len))
+    }
+
+    /// Decode an OXM field (OpenFlow Basic class).
+    #[allow(clippy::too_many_lines)]
+    fn decode_oxm_field(
+        m: &mut Match,
+        field: u8,
+        has_mask: bool,
+        value: &[u8],
+        value_len: usize,
+    ) {
+        match field {
+            f if f == OxmField::InPort as u8 => {
+                if value_len >= 4 {
+                    m.in_port = Some(u32::from_be_bytes([value[0], value[1], value[2], value[3]]));
+                }
+            }
+            f if f == OxmField::InPhyPort as u8 => {
+                if value_len >= 4 {
+                    m.in_phy_port = Some(u32::from_be_bytes([value[0], value[1], value[2], value[3]]));
+                }
+            }
+            f if f == OxmField::Metadata as u8 => {
+                if value_len >= 8 {
+                    m.metadata = Some(u64::from_be_bytes([
+                        value[0], value[1], value[2], value[3],
+                        value[4], value[5], value[6], value[7],
+                    ]));
+                    if has_mask && value.len() >= 16 {
+                        m.metadata_mask = Some(u64::from_be_bytes([
+                            value[8], value[9], value[10], value[11],
+                            value[12], value[13], value[14], value[15],
+                        ]));
+                    }
+                }
+            }
+            f if f == OxmField::EthDst as u8 => {
+                if value_len >= 6 {
+                    let mut mac = [0u8; 6];
+                    mac.copy_from_slice(&value[..6]);
+                    m.eth_dst = Some(mac);
+                    if has_mask && value.len() >= 12 {
+                        let mut mask = [0u8; 6];
+                        mask.copy_from_slice(&value[6..12]);
+                        m.eth_dst_mask = Some(mask);
+                    }
+                }
+            }
+            f if f == OxmField::EthSrc as u8 => {
+                if value_len >= 6 {
+                    let mut mac = [0u8; 6];
+                    mac.copy_from_slice(&value[..6]);
+                    m.eth_src = Some(mac);
+                    if has_mask && value.len() >= 12 {
+                        let mut mask = [0u8; 6];
+                        mask.copy_from_slice(&value[6..12]);
+                        m.eth_src_mask = Some(mask);
+                    }
+                }
+            }
+            f if f == OxmField::EthType as u8 => {
+                if value_len >= 2 {
+                    m.eth_type = Some(u16::from_be_bytes([value[0], value[1]]));
+                }
+            }
+            f if f == OxmField::VlanVid as u8 => {
+                if value_len >= 2 {
+                    let vid = u16::from_be_bytes([value[0], value[1]]);
+                    // Remove CFI bit (0x1000)
+                    m.vlan_vid = Some(vid & 0x0fff);
+                }
+            }
+            f if f == OxmField::VlanPcp as u8 => {
+                if value_len >= 1 {
+                    m.vlan_pcp = Some(value[0]);
+                }
+            }
+            f if f == OxmField::IpDscp as u8 => {
+                if value_len >= 1 {
+                    m.ip_dscp = Some(value[0]);
+                }
+            }
+            f if f == OxmField::IpEcn as u8 => {
+                if value_len >= 1 {
+                    m.ip_ecn = Some(value[0]);
+                }
+            }
+            f if f == OxmField::IpProto as u8 => {
+                if value_len >= 1 {
+                    m.ip_proto = Some(value[0]);
+                }
+            }
+            f if f == OxmField::Ipv4Src as u8 => {
+                if value_len >= 4 {
+                    let addr = Ipv4Addr::new(value[0], value[1], value[2], value[3]);
+                    m.ipv4_src = Some(addr);
+                    if has_mask && value.len() >= 8 {
+                        let mask = u32::from_be_bytes([value[4], value[5], value[6], value[7]]);
+                        m.ipv4_src_mask = Some(mask_to_prefix(mask));
+                    } else {
+                        m.ipv4_src_mask = Some(32);
+                    }
+                }
+            }
+            f if f == OxmField::Ipv4Dst as u8 => {
+                if value_len >= 4 {
+                    let addr = Ipv4Addr::new(value[0], value[1], value[2], value[3]);
+                    m.ipv4_dst = Some(addr);
+                    if has_mask && value.len() >= 8 {
+                        let mask = u32::from_be_bytes([value[4], value[5], value[6], value[7]]);
+                        m.ipv4_dst_mask = Some(mask_to_prefix(mask));
+                    } else {
+                        m.ipv4_dst_mask = Some(32);
+                    }
+                }
+            }
+            f if f == OxmField::TcpSrc as u8 => {
+                if value_len >= 2 {
+                    m.tcp_src = Some(u16::from_be_bytes([value[0], value[1]]));
+                }
+            }
+            f if f == OxmField::TcpDst as u8 => {
+                if value_len >= 2 {
+                    m.tcp_dst = Some(u16::from_be_bytes([value[0], value[1]]));
+                }
+            }
+            f if f == OxmField::UdpSrc as u8 => {
+                if value_len >= 2 {
+                    m.udp_src = Some(u16::from_be_bytes([value[0], value[1]]));
+                }
+            }
+            f if f == OxmField::UdpDst as u8 => {
+                if value_len >= 2 {
+                    m.udp_dst = Some(u16::from_be_bytes([value[0], value[1]]));
+                }
+            }
+            f if f == OxmField::Icmpv4Type as u8 => {
+                if value_len >= 1 {
+                    m.icmp_type = Some(value[0]);
+                }
+            }
+            f if f == OxmField::Icmpv4Code as u8 => {
+                if value_len >= 1 {
+                    m.icmp_code = Some(value[0]);
+                }
+            }
+            f if f == OxmField::ArpOp as u8 => {
+                if value_len >= 2 {
+                    m.arp_op = Some(u16::from_be_bytes([value[0], value[1]]));
+                }
+            }
+            f if f == OxmField::ArpSpa as u8 => {
+                if value_len >= 4 {
+                    m.arp_spa = Some(Ipv4Addr::new(value[0], value[1], value[2], value[3]));
+                }
+            }
+            f if f == OxmField::ArpTpa as u8 => {
+                if value_len >= 4 {
+                    m.arp_tpa = Some(Ipv4Addr::new(value[0], value[1], value[2], value[3]));
+                }
+            }
+            f if f == OxmField::ArpSha as u8 => {
+                if value_len >= 6 {
+                    let mut mac = [0u8; 6];
+                    mac.copy_from_slice(&value[..6]);
+                    m.arp_sha = Some(mac);
+                }
+            }
+            f if f == OxmField::ArpTha as u8 => {
+                if value_len >= 6 {
+                    let mut mac = [0u8; 6];
+                    mac.copy_from_slice(&value[..6]);
+                    m.arp_tha = Some(mac);
+                }
+            }
+            f if f == OxmField::Ipv6Src as u8 => {
+                if value_len >= 16 {
+                    let mut octets = [0u8; 16];
+                    octets.copy_from_slice(&value[..16]);
+                    m.ipv6_src = Some(Ipv6Addr::from(octets));
+                    if has_mask && value.len() >= 32 {
+                        let mut mask_bytes = [0u8; 16];
+                        mask_bytes.copy_from_slice(&value[16..32]);
+                        let mask = u128::from_be_bytes(mask_bytes);
+                        m.ipv6_src_mask = Some(mask_to_prefix_v6(mask));
+                    } else {
+                        m.ipv6_src_mask = Some(128);
+                    }
+                }
+            }
+            f if f == OxmField::Ipv6Dst as u8 => {
+                if value_len >= 16 {
+                    let mut octets = [0u8; 16];
+                    octets.copy_from_slice(&value[..16]);
+                    m.ipv6_dst = Some(Ipv6Addr::from(octets));
+                    if has_mask && value.len() >= 32 {
+                        let mut mask_bytes = [0u8; 16];
+                        mask_bytes.copy_from_slice(&value[16..32]);
+                        let mask = u128::from_be_bytes(mask_bytes);
+                        m.ipv6_dst_mask = Some(mask_to_prefix_v6(mask));
+                    } else {
+                        m.ipv6_dst_mask = Some(128);
+                    }
+                }
+            }
+            f if f == OxmField::Ipv6Flabel as u8 => {
+                if value_len >= 4 {
+                    m.ipv6_flabel = Some(u32::from_be_bytes([value[0], value[1], value[2], value[3]]));
+                }
+            }
+            f if f == OxmField::TunnelId as u8 => {
+                if value_len >= 8 {
+                    m.tunnel_id = Some(u64::from_be_bytes([
+                        value[0], value[1], value[2], value[3],
+                        value[4], value[5], value[6], value[7],
+                    ]));
+                }
+            }
+            _ => {
+                // Unknown field, skip
+            }
+        }
+    }
+
+    /// Decode an NXM field (Nicira extensions).
+    fn decode_nxm_field(
+        m: &mut Match,
+        field: u8,
+        _has_mask: bool,
+        value: &[u8],
+        value_len: usize,
+    ) {
+        // NXM1 field 16 is TUN_ID
+        if field == 16 && value_len >= 8 {
+            m.tunnel_id = Some(u64::from_be_bytes([
+                value[0], value[1], value[2], value[3],
+                value[4], value[5], value[6], value[7],
+            ]));
+        }
+        // Other NXM fields are not yet supported
+    }
+
+    /// Encode the match to OpenFlow wire format (OXM).
+    ///
+    /// The match is encoded as:
+    /// - Match header: type (2 bytes) + length (2 bytes)
+    /// - OXM fields (variable)
+    /// - Padding to 8-byte boundary
+    ///
+    /// Fields are encoded in OpenFlow-specified order with prerequisites
+    /// automatically satisfied by the builder methods.
+    #[allow(clippy::too_many_lines)]
+    pub fn encode(&self) -> Vec<u8> {
+        // Encode all OXM fields first
+        let mut oxm_fields = Vec::new();
+
+        // Encode fields in OpenFlow-specified order
+        // This ordering ensures prerequisites come before dependent fields
+
+        // Port fields
+        if let Some(port) = self.in_port {
+            oxm_fields.extend(oxm::encode_u32(
+                OxmClass::OpenflowBasic,
+                OxmField::InPort as u8,
+                port,
+            ));
+        }
+        if let Some(port) = self.in_phy_port {
+            oxm_fields.extend(oxm::encode_u32(
+                OxmClass::OpenflowBasic,
+                OxmField::InPhyPort as u8,
+                port,
+            ));
+        }
+
+        // Metadata
+        if let Some(metadata) = self.metadata {
+            if let Some(mask) = self.metadata_mask {
+                oxm_fields.extend(oxm::encode_u64_masked(
+                    OxmClass::OpenflowBasic,
+                    OxmField::Metadata as u8,
+                    metadata,
+                    mask,
+                ));
+            } else {
+                oxm_fields.extend(oxm::encode_u64(
+                    OxmClass::OpenflowBasic,
+                    OxmField::Metadata as u8,
+                    metadata,
+                ));
+            }
+        }
+
+        // L2 fields
+        if let Some(mac) = self.eth_dst {
+            if let Some(mask) = self.eth_dst_mask {
+                oxm_fields.extend(oxm::encode_mac_masked(
+                    OxmClass::OpenflowBasic,
+                    OxmField::EthDst as u8,
+                    mac,
+                    mask,
+                ));
+            } else {
+                oxm_fields.extend(oxm::encode_mac(
+                    OxmClass::OpenflowBasic,
+                    OxmField::EthDst as u8,
+                    mac,
+                ));
+            }
+        }
+        if let Some(mac) = self.eth_src {
+            if let Some(mask) = self.eth_src_mask {
+                oxm_fields.extend(oxm::encode_mac_masked(
+                    OxmClass::OpenflowBasic,
+                    OxmField::EthSrc as u8,
+                    mac,
+                    mask,
+                ));
+            } else {
+                oxm_fields.extend(oxm::encode_mac(
+                    OxmClass::OpenflowBasic,
+                    OxmField::EthSrc as u8,
+                    mac,
+                ));
+            }
+        }
+        if let Some(eth_type) = self.eth_type {
+            oxm_fields.extend(oxm::encode_u16(
+                OxmClass::OpenflowBasic,
+                OxmField::EthType as u8,
+                eth_type,
+            ));
+        }
+        if let Some(vid) = self.vlan_vid {
+            // VLAN VID has CFI bit (0x1000) set when present
+            oxm_fields.extend(oxm::encode_u16(
+                OxmClass::OpenflowBasic,
+                OxmField::VlanVid as u8,
+                vid | 0x1000,
+            ));
+        }
+        if let Some(pcp) = self.vlan_pcp {
+            oxm_fields.extend(oxm::encode_u8(
+                OxmClass::OpenflowBasic,
+                OxmField::VlanPcp as u8,
+                pcp,
+            ));
+        }
+
+        // L3 IPv4 fields
+        if let Some(dscp) = self.ip_dscp {
+            oxm_fields.extend(oxm::encode_u8(
+                OxmClass::OpenflowBasic,
+                OxmField::IpDscp as u8,
+                dscp,
+            ));
+        }
+        if let Some(ecn) = self.ip_ecn {
+            oxm_fields.extend(oxm::encode_u8(
+                OxmClass::OpenflowBasic,
+                OxmField::IpEcn as u8,
+                ecn,
+            ));
+        }
+        if let Some(proto) = self.ip_proto {
+            oxm_fields.extend(oxm::encode_u8(
+                OxmClass::OpenflowBasic,
+                OxmField::IpProto as u8,
+                proto,
+            ));
+        }
+        if let Some(addr) = self.ipv4_src {
+            let addr_u32: u32 = addr.into();
+            if let Some(prefix) = self.ipv4_src_mask {
+                if prefix < 32 {
+                    let mask = oxm::prefix_to_mask(prefix);
+                    oxm_fields.extend(oxm::encode_u32_masked(
+                        OxmClass::OpenflowBasic,
+                        OxmField::Ipv4Src as u8,
+                        addr_u32,
+                        mask,
+                    ));
+                } else {
+                    oxm_fields.extend(oxm::encode_u32(
+                        OxmClass::OpenflowBasic,
+                        OxmField::Ipv4Src as u8,
+                        addr_u32,
+                    ));
+                }
+            } else {
+                oxm_fields.extend(oxm::encode_u32(
+                    OxmClass::OpenflowBasic,
+                    OxmField::Ipv4Src as u8,
+                    addr_u32,
+                ));
+            }
+        }
+        if let Some(addr) = self.ipv4_dst {
+            let addr_u32: u32 = addr.into();
+            if let Some(prefix) = self.ipv4_dst_mask {
+                if prefix < 32 {
+                    let mask = oxm::prefix_to_mask(prefix);
+                    oxm_fields.extend(oxm::encode_u32_masked(
+                        OxmClass::OpenflowBasic,
+                        OxmField::Ipv4Dst as u8,
+                        addr_u32,
+                        mask,
+                    ));
+                } else {
+                    oxm_fields.extend(oxm::encode_u32(
+                        OxmClass::OpenflowBasic,
+                        OxmField::Ipv4Dst as u8,
+                        addr_u32,
+                    ));
+                }
+            } else {
+                oxm_fields.extend(oxm::encode_u32(
+                    OxmClass::OpenflowBasic,
+                    OxmField::Ipv4Dst as u8,
+                    addr_u32,
+                ));
+            }
+        }
+
+        // L4 TCP fields
+        if let Some(port) = self.tcp_src {
+            oxm_fields.extend(oxm::encode_u16(
+                OxmClass::OpenflowBasic,
+                OxmField::TcpSrc as u8,
+                port,
+            ));
+        }
+        if let Some(port) = self.tcp_dst {
+            oxm_fields.extend(oxm::encode_u16(
+                OxmClass::OpenflowBasic,
+                OxmField::TcpDst as u8,
+                port,
+            ));
+        }
+
+        // L4 UDP fields
+        if let Some(port) = self.udp_src {
+            oxm_fields.extend(oxm::encode_u16(
+                OxmClass::OpenflowBasic,
+                OxmField::UdpSrc as u8,
+                port,
+            ));
+        }
+        if let Some(port) = self.udp_dst {
+            oxm_fields.extend(oxm::encode_u16(
+                OxmClass::OpenflowBasic,
+                OxmField::UdpDst as u8,
+                port,
+            ));
+        }
+
+        // ICMP fields
+        if let Some(icmp_type) = self.icmp_type {
+            oxm_fields.extend(oxm::encode_u8(
+                OxmClass::OpenflowBasic,
+                OxmField::Icmpv4Type as u8,
+                icmp_type,
+            ));
+        }
+        if let Some(icmp_code) = self.icmp_code {
+            oxm_fields.extend(oxm::encode_u8(
+                OxmClass::OpenflowBasic,
+                OxmField::Icmpv4Code as u8,
+                icmp_code,
+            ));
+        }
+
+        // ARP fields
+        if let Some(op) = self.arp_op {
+            oxm_fields.extend(oxm::encode_u16(
+                OxmClass::OpenflowBasic,
+                OxmField::ArpOp as u8,
+                op,
+            ));
+        }
+        if let Some(addr) = self.arp_spa {
+            oxm_fields.extend(oxm::encode_u32(
+                OxmClass::OpenflowBasic,
+                OxmField::ArpSpa as u8,
+                addr.into(),
+            ));
+        }
+        if let Some(addr) = self.arp_tpa {
+            oxm_fields.extend(oxm::encode_u32(
+                OxmClass::OpenflowBasic,
+                OxmField::ArpTpa as u8,
+                addr.into(),
+            ));
+        }
+        if let Some(mac) = self.arp_sha {
+            oxm_fields.extend(oxm::encode_mac(
+                OxmClass::OpenflowBasic,
+                OxmField::ArpSha as u8,
+                mac,
+            ));
+        }
+        if let Some(mac) = self.arp_tha {
+            oxm_fields.extend(oxm::encode_mac(
+                OxmClass::OpenflowBasic,
+                OxmField::ArpTha as u8,
+                mac,
+            ));
+        }
+
+        // IPv6 fields
+        if let Some(addr) = self.ipv6_src {
+            let octets = addr.octets();
+            let value = u128::from_be_bytes(octets);
+            if let Some(prefix) = self.ipv6_src_mask {
+                if prefix < 128 {
+                    let mask = oxm::prefix_to_mask_v6(prefix);
+                    oxm_fields.extend(encode_ipv6_masked(OxmField::Ipv6Src as u8, value, mask));
+                } else {
+                    oxm_fields.extend(encode_ipv6(OxmField::Ipv6Src as u8, value));
+                }
+            } else {
+                oxm_fields.extend(encode_ipv6(OxmField::Ipv6Src as u8, value));
+            }
+        }
+        if let Some(addr) = self.ipv6_dst {
+            let octets = addr.octets();
+            let value = u128::from_be_bytes(octets);
+            if let Some(prefix) = self.ipv6_dst_mask {
+                if prefix < 128 {
+                    let mask = oxm::prefix_to_mask_v6(prefix);
+                    oxm_fields.extend(encode_ipv6_masked(OxmField::Ipv6Dst as u8, value, mask));
+                } else {
+                    oxm_fields.extend(encode_ipv6(OxmField::Ipv6Dst as u8, value));
+                }
+            } else {
+                oxm_fields.extend(encode_ipv6(OxmField::Ipv6Dst as u8, value));
+            }
+        }
+        if let Some(flabel) = self.ipv6_flabel {
+            oxm_fields.extend(oxm::encode_u32(
+                OxmClass::OpenflowBasic,
+                OxmField::Ipv6Flabel as u8,
+                flabel,
+            ));
+        }
+
+        // Tunnel ID (NXM field)
+        if let Some(tun_id) = self.tunnel_id {
+            oxm_fields.extend(oxm::encode_tun_id(tun_id));
+        }
+
+        // Build match structure
+        // Match header: type (2) + length (2) + OXM fields + padding
+        // Length includes header (4 bytes) + OXM fields length
+        let oxm_len = oxm_fields.len();
+        let match_len = 4 + oxm_len; // header + OXM fields
+        let padded_len = (match_len + 7) & !7; // Round up to 8-byte boundary
+        let padding = padded_len - match_len;
+
+        let mut buf = Vec::with_capacity(padded_len);
+        buf.extend((MatchType::Oxm as u16).to_be_bytes()); // type = 1 (OXM)
+        buf.extend((match_len as u16).to_be_bytes()); // length (includes header)
+        buf.extend(oxm_fields);
+        buf.extend(std::iter::repeat_n(0u8, padding));
+        buf
+    }
+}
+
+/// Convert a 32-bit network mask to prefix length.
+fn mask_to_prefix(mask: u32) -> u8 {
+    mask.leading_ones() as u8
+}
+
+/// Convert a 128-bit network mask to prefix length.
+fn mask_to_prefix_v6(mask: u128) -> u8 {
+    mask.leading_ones() as u8
+}
+
+// Helper functions for IPv6 encoding (16 bytes)
+fn encode_ipv6(field: u8, value: u128) -> Vec<u8> {
+    let mut buf = Vec::with_capacity(20);
+    // OXM header: class=0x8000, field, has_mask=false, length=16
+    let oxm_header = ((OxmClass::OpenflowBasic as u32) << 16) | ((field as u32) << 9) | 16;
+    buf.extend(oxm_header.to_be_bytes());
+    buf.extend(value.to_be_bytes());
+    buf
+}
+
+fn encode_ipv6_masked(field: u8, value: u128, mask: u128) -> Vec<u8> {
+    let mut buf = Vec::with_capacity(36);
+    // OXM header: class=0x8000, field, has_mask=true, length=32
+    let oxm_header = ((OxmClass::OpenflowBasic as u32) << 16) | ((field as u32) << 9) | (1 << 8) | 32;
+    buf.extend(oxm_header.to_be_bytes());
+    buf.extend(value.to_be_bytes());
+    buf.extend(mask.to_be_bytes());
+    buf
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn match_type_values() {
+        assert_eq!(MatchType::Standard as u16, 0);
+        assert_eq!(MatchType::Oxm as u16, 1);
+    }
+
+    #[test]
+    fn encode_empty_match() {
+        let m = Match::new();
+        let bytes = m.encode();
+        // Empty match: header (4) + padding (4) = 8 bytes
+        assert_eq!(bytes.len(), 8);
+        // type = 1 (OXM)
+        assert_eq!(&bytes[0..2], &[0x00, 0x01]);
+        // length = 4 (just header, no fields)
+        assert_eq!(&bytes[2..4], &[0x00, 0x04]);
+        // padding to 8 bytes
+        assert_eq!(&bytes[4..8], &[0, 0, 0, 0]);
+    }
+
+    #[test]
+    fn encode_in_port_match() {
+        let m = Match::new().in_port(1);
+        let bytes = m.encode();
+        // Header (4) + InPort OXM (4 header + 4 value) = 12, padded to 16
+        assert_eq!(bytes.len(), 16);
+        // type = 1 (OXM)
+        assert_eq!(&bytes[0..2], &[0x00, 0x01]);
+        // length = 12 (header + OXM)
+        assert_eq!(&bytes[2..4], &[0x00, 0x0c]);
+        // OXM header: class=0x8000, field=0 (InPort), has_mask=0, length=4
+        let expected_oxm: u32 = (0x8000 << 16) | (0 << 9) | 4;
+        assert_eq!(&bytes[4..8], &expected_oxm.to_be_bytes());
+        // InPort value = 1
+        assert_eq!(&bytes[8..12], &[0x00, 0x00, 0x00, 0x01]);
+    }
+
+    #[test]
+    fn encode_eth_type_match() {
+        let m = Match::new().eth_type(0x0800);
+        let bytes = m.encode();
+        // Header (4) + EthType OXM (4 header + 2 value) = 10, padded to 16
+        assert_eq!(bytes.len(), 16);
+        // length = 10
+        assert_eq!(&bytes[2..4], &[0x00, 0x0a]);
+        // OXM header: class=0x8000, field=5 (EthType), has_mask=0, length=2
+        let expected_oxm: u32 = (0x8000 << 16) | (5 << 9) | 2;
+        assert_eq!(&bytes[4..8], &expected_oxm.to_be_bytes());
+        // EthType value = 0x0800
+        assert_eq!(&bytes[8..10], &[0x08, 0x00]);
+    }
+
+    #[test]
+    fn encode_ipv4_dst_with_prefix() {
+        let m = Match::new().ipv4_dst("10.0.0.0".parse().unwrap(), 24);
+        let bytes = m.encode();
+        // Header (4) + EthType (6) + Ipv4Dst masked (12) = 22, padded to 24
+        assert_eq!(bytes.len(), 24);
+        // EthType should be auto-set to 0x0800
+        // Check EthType OXM at offset 4
+        let eth_type_oxm: u32 = (0x8000 << 16) | (5 << 9) | 2;
+        assert_eq!(&bytes[4..8], &eth_type_oxm.to_be_bytes());
+        assert_eq!(&bytes[8..10], &[0x08, 0x00]); // EthType = IPv4
+    }
+
+    #[test]
+    fn encode_tcp_dst_match() {
+        let m = Match::new().eth_type(0x0800).ip_proto(6).tcp_dst(80);
+        let bytes = m.encode();
+        // Header (4) + EthType (6) + IpProto (5) + TcpDst (6) = 21, padded to 24
+        assert_eq!(bytes.len(), 24);
+    }
+
+    #[test]
+    fn encode_eth_dst_match() {
+        let mac: MacAddr = [0x00, 0x11, 0x22, 0x33, 0x44, 0x55];
+        let m = Match::new().eth_dst(mac);
+        let bytes = m.encode();
+        // Header (4) + EthDst OXM (4 header + 6 value) = 14, padded to 16
+        assert_eq!(bytes.len(), 16);
+        // OXM header: class=0x8000, field=3 (EthDst), has_mask=0, length=6
+        let expected_oxm: u32 = (0x8000 << 16) | (3 << 9) | 6;
+        assert_eq!(&bytes[4..8], &expected_oxm.to_be_bytes());
+        // MAC address
+        assert_eq!(&bytes[8..14], &mac);
+    }
+
+    #[test]
+    fn encode_vlan_vid_match() {
+        let m = Match::new().vlan_vid(100);
+        let bytes = m.encode();
+        // Header (4) + VlanVid OXM (4 header + 2 value) = 10, padded to 16
+        assert_eq!(bytes.len(), 16);
+        // OXM header: class=0x8000, field=6 (VlanVid), has_mask=0, length=2
+        let expected_oxm: u32 = (0x8000 << 16) | (6 << 9) | 2;
+        assert_eq!(&bytes[4..8], &expected_oxm.to_be_bytes());
+        // VLAN VID with CFI bit = 100 | 0x1000 = 0x1064
+        assert_eq!(&bytes[8..10], &[0x10, 0x64]);
+    }
+
+    #[test]
+    fn encode_tunnel_id_match() {
+        let m = Match::new().tunnel_id(0x1234);
+        let bytes = m.encode();
+        // Header (4) + TunId NXM (4 header + 8 value) = 16, already aligned
+        assert_eq!(bytes.len(), 16);
+    }
+
+    #[test]
+    fn encode_multiple_fields() {
+        let m = Match::new()
+            .in_port(1)
+            .eth_type(0x0800)
+            .ipv4_dst("192.168.1.0".parse().unwrap(), 24);
+        let bytes = m.encode();
+        // Verify it's 8-byte aligned
+        assert_eq!(bytes.len() % 8, 0);
+        // Verify type = OXM
+        assert_eq!(&bytes[0..2], &[0x00, 0x01]);
+    }
+
+    #[test]
+    fn match_8_byte_alignment() {
+        // Test various field combinations ensure 8-byte alignment
+        let m1 = Match::new().in_port(1);
+        assert_eq!(m1.encode().len() % 8, 0);
+
+        let m2 = Match::new().eth_type(0x0800);
+        assert_eq!(m2.encode().len() % 8, 0);
+
+        let m3 = Match::new().ip_proto(6);
+        assert_eq!(m3.encode().len() % 8, 0);
+
+        let m4 = Match::new()
+            .in_port(1)
+            .eth_type(0x0800)
+            .ip_proto(6)
+            .tcp_dst(80);
+        assert_eq!(m4.encode().len() % 8, 0);
+    }
+
+    // Decode tests
+
+    #[test]
+    fn decode_empty_match() {
+        // Empty match: type=1 (OXM), length=4, padding
+        let data = [0x00, 0x01, 0x00, 0x04, 0x00, 0x00, 0x00, 0x00];
+        let (m, len) = Match::decode(&data).unwrap();
+        assert_eq!(len, 8);
+        assert!(m.is_empty());
+    }
+
+    #[test]
+    fn decode_in_port() {
+        let original = Match::new().in_port(42);
+        let encoded = original.encode();
+        let (decoded, _) = Match::decode(&encoded).unwrap();
+        assert_eq!(decoded.in_port, Some(42));
+    }
+
+    #[test]
+    fn decode_eth_type() {
+        let original = Match::new().eth_type(0x0800);
+        let encoded = original.encode();
+        let (decoded, _) = Match::decode(&encoded).unwrap();
+        assert_eq!(decoded.eth_type, Some(0x0800));
+    }
+
+    #[test]
+    fn decode_vlan_vid() {
+        let original = Match::new().vlan_vid(100);
+        let encoded = original.encode();
+        let (decoded, _) = Match::decode(&encoded).unwrap();
+        assert_eq!(decoded.vlan_vid, Some(100));
+    }
+
+    #[test]
+    fn decode_ipv4_dst() {
+        let original = Match::new().ipv4_dst("10.0.0.0".parse().unwrap(), 24);
+        let encoded = original.encode();
+        let (decoded, _) = Match::decode(&encoded).unwrap();
+        assert_eq!(decoded.ipv4_dst, Some("10.0.0.0".parse().unwrap()));
+        assert_eq!(decoded.ipv4_dst_mask, Some(24));
+    }
+
+    #[test]
+    fn decode_tcp_dst() {
+        let original = Match::new().eth_type(0x0800).ip_proto(6).tcp_dst(80);
+        let encoded = original.encode();
+        let (decoded, _) = Match::decode(&encoded).unwrap();
+        assert_eq!(decoded.eth_type, Some(0x0800));
+        assert_eq!(decoded.ip_proto, Some(6));
+        assert_eq!(decoded.tcp_dst, Some(80));
+    }
+
+    #[test]
+    fn decode_eth_dst() {
+        let mac: MacAddr = [0x00, 0x11, 0x22, 0x33, 0x44, 0x55];
+        let original = Match::new().eth_dst(mac);
+        let encoded = original.encode();
+        let (decoded, _) = Match::decode(&encoded).unwrap();
+        assert_eq!(decoded.eth_dst, Some(mac));
+    }
+
+    #[test]
+    fn decode_multiple_fields() {
+        let original = Match::new()
+            .in_port(1)
+            .eth_type(0x0800)
+            .ip_proto(6)
+            .tcp_dst(443);
+        let encoded = original.encode();
+        let (decoded, _) = Match::decode(&encoded).unwrap();
+        assert_eq!(decoded.in_port, Some(1));
+        assert_eq!(decoded.eth_type, Some(0x0800));
+        assert_eq!(decoded.ip_proto, Some(6));
+        assert_eq!(decoded.tcp_dst, Some(443));
+    }
+
+    #[test]
+    fn roundtrip_encode_decode() {
+        // Create a complex match and verify roundtrip
+        let original = Match::new()
+            .in_port(5)
+            .eth_dst([0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff])
+            .eth_type(0x0800)
+            .ipv4_dst("192.168.1.0".parse().unwrap(), 24)
+            .ip_proto(17)
+            .udp_dst(53);
+
+        let encoded = original.encode();
+        let (decoded, len) = Match::decode(&encoded).unwrap();
+
+        assert_eq!(len, encoded.len());
+        assert_eq!(decoded.in_port, Some(5));
+        assert_eq!(decoded.eth_dst, Some([0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff]));
+        assert_eq!(decoded.eth_type, Some(0x0800));
+        assert_eq!(decoded.ipv4_dst, Some("192.168.1.0".parse().unwrap()));
+        assert_eq!(decoded.ipv4_dst_mask, Some(24));
+        assert_eq!(decoded.ip_proto, Some(17));
+        assert_eq!(decoded.udp_dst, Some(53));
+    }
+
+    #[test]
+    fn mask_to_prefix_conversion() {
+        assert_eq!(mask_to_prefix(0xffff_ffff), 32);
+        assert_eq!(mask_to_prefix(0xffff_ff00), 24);
+        assert_eq!(mask_to_prefix(0xffff_0000), 16);
+        assert_eq!(mask_to_prefix(0xff00_0000), 8);
+        assert_eq!(mask_to_prefix(0x0000_0000), 0);
+    }
+
+    #[test]
+    fn mask_to_prefix_v6_conversion() {
+        assert_eq!(mask_to_prefix_v6(u128::MAX), 128);
+        assert_eq!(mask_to_prefix_v6(u128::MAX << 64), 64);
+        assert_eq!(mask_to_prefix_v6(0), 0);
     }
 }

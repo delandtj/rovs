@@ -23,8 +23,8 @@ RUN apk add --no-cache \
 COPY scripts/ovsdb-entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
-# OVSDB listens on TCP 6640
-EXPOSE 6640
+# OVSDB listens on TCP 6640, OpenFlow on 6653
+EXPOSE 6640 6653
 
 # Health check - verify ovsdb-server is responding
 HEALTHCHECK --interval=5s --timeout=3s --start-period=5s --retries=3 \

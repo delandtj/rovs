@@ -21,16 +21,20 @@
 mod action;
 mod error;
 mod flow;
+mod instruction;
 mod match_fields;
 mod message;
+mod multipart;
 mod oxm;
 mod vconn;
 
 pub use action::{Action, ActionList};
-pub use error::Error;
+pub use error::{Error, OfError, OfErrorType};
 pub use flow::{Flow, FlowCommand, FlowFlags, FlowStats};
+pub use instruction::{Instruction, InstructionList};
 pub use match_fields::Match;
 pub use message::{Header, Message, MessageType};
+pub use multipart::{FlowStatsEntry, FlowStatsRequest, MultipartType};
 pub use vconn::VConn;
 
 pub type Result<T> = std::result::Result<T, Error>;

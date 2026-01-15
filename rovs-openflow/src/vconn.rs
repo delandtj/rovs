@@ -5,6 +5,8 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 use rovs_transport::{Address, Stream};
 
+use crate::error::OfError;
+use crate::multipart::{parse_flow_stats_reply, FlowStatsEntry, FlowStatsRequest};
 use crate::{Error, Flow, Header, Message, MessageType, Result, Version};
 
 /// An OpenFlow virtual connection.
@@ -92,9 +94,71 @@ impl VConn {
         })
     }
 
-    /// Send a flow to the switch.
-    pub async fn send_flow(&mut self, _flow: &Flow) -> Result<()> {
-        todo!("Flow encoding: serialize Flow struct to OpenFlow wire format bytes")
+    /// Check if a message is an error and return the appropriate error.
+    fn check_error(msg: &Message) -> Result<()> {
+        if msg.header.msg_type == MessageType::Error {
+            let of_error = OfError::parse(&msg.body)?;
+            return Err(Error::OfError(of_error));
+        }
+        Ok(())
+    }
+
+    /// Send a flow modification to the switch.
+    ///
+    /// This sends the FlowMod message asynchronously without waiting for
+    /// confirmation. Use `send_flow_sync` if you need to ensure the flow
+    /// was successfully installed.
+    pub async fn send_flow(&mut self, flow: &Flow) -> Result<()> {
+        let xid = self.next_xid();
+        let msg = flow.to_message(self.version, xid);
+        self.send_message(&msg).await
+    }
+
+    /// Send a flow modification and wait for confirmation.
+    ///
+    /// Sends the FlowMod followed by a barrier request, then waits for
+    /// the barrier reply. If an error occurs (e.g., invalid flow), it
+    /// will be returned.
+    ///
+    /// This ensures the flow is installed (or rejected) before returning.
+    pub async fn send_flow_sync(&mut self, flow: &Flow) -> Result<()> {
+        // Send the flow
+        let flow_xid = self.next_xid();
+        let flow_msg = flow.to_message(self.version, flow_xid);
+        self.send_message(&flow_msg).await?;
+
+        // Send barrier
+        let barrier_xid = self.next_xid();
+        let barrier_msg =
+            Message::new(self.version, MessageType::BarrierRequest, barrier_xid, Bytes::new());
+        self.send_message(&barrier_msg).await?;
+
+        // Wait for response - could be error or barrier reply
+        loop {
+            let reply = self.recv_message().await?;
+
+            // Check for error (could be from flow or barrier)
+            Self::check_error(&reply)?;
+
+            // If we got the barrier reply, flow was successfully installed
+            if reply.header.msg_type == MessageType::BarrierReply {
+                return Ok(());
+            }
+
+            // Handle echo requests while waiting (keep-alive)
+            if reply.header.msg_type == MessageType::EchoRequest {
+                let echo_reply = Message::new(
+                    self.version,
+                    MessageType::EchoReply,
+                    reply.header.xid,
+                    reply.body.clone(),
+                );
+                self.send_message(&echo_reply).await?;
+            }
+
+            // Skip other async messages (PacketIn, PortStatus, FlowRemoved)
+            // In a full implementation, these would be queued for processing
+        }
     }
 
     /// Send an echo request and wait for reply.
@@ -120,11 +184,85 @@ impl VConn {
         let request = Message::new(self.version, MessageType::BarrierRequest, xid, Bytes::new());
         self.send_message(&request).await?;
 
-        let reply = self.recv_message().await?;
-        if reply.header.msg_type != MessageType::BarrierReply {
-            return Err(Error::InvalidMessage("expected BarrierReply".into()));
+        loop {
+            let reply = self.recv_message().await?;
+
+            // Check for errors
+            Self::check_error(&reply)?;
+
+            if reply.header.msg_type == MessageType::BarrierReply {
+                return Ok(());
+            }
+
+            // Handle echo requests while waiting
+            if reply.header.msg_type == MessageType::EchoRequest {
+                let echo_reply = Message::new(
+                    self.version,
+                    MessageType::EchoReply,
+                    reply.header.xid,
+                    reply.body.clone(),
+                );
+                self.send_message(&echo_reply).await?;
+            }
+
+            // Skip other async messages
+        }
+    }
+
+    /// Dump all flows from the switch.
+    ///
+    /// Returns all flow entries from all tables. Use `dump_flows_filtered`
+    /// for more specific queries.
+    pub async fn dump_flows(&mut self) -> Result<Vec<FlowStatsEntry>> {
+        self.dump_flows_filtered(FlowStatsRequest::new()).await
+    }
+
+    /// Dump flows matching the given filter.
+    ///
+    /// The request can filter by table ID, match fields, cookie, etc.
+    pub async fn dump_flows_filtered(
+        &mut self,
+        request: FlowStatsRequest,
+    ) -> Result<Vec<FlowStatsEntry>> {
+        let xid = self.next_xid();
+        let msg = request.to_message(self.version, xid);
+        self.send_message(&msg).await?;
+
+        let mut all_entries = Vec::new();
+
+        // Receive multipart replies until we get one without MORE flag
+        loop {
+            let reply = self.recv_message().await?;
+
+            // Check for errors
+            Self::check_error(&reply)?;
+
+            // Handle echo requests
+            if reply.header.msg_type == MessageType::EchoRequest {
+                let echo_reply = Message::new(
+                    self.version,
+                    MessageType::EchoReply,
+                    reply.header.xid,
+                    reply.body.clone(),
+                );
+                self.send_message(&echo_reply).await?;
+                continue;
+            }
+
+            // Skip non-multipart replies
+            if reply.header.msg_type != MessageType::MultipartReply {
+                continue;
+            }
+
+            // Parse the flow stats reply
+            let (entries, has_more) = parse_flow_stats_reply(&reply.body)?;
+            all_entries.extend(entries);
+
+            if !has_more {
+                break;
+            }
         }
 
-        Ok(())
+        Ok(all_entries)
     }
 }
