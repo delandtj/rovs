@@ -148,8 +148,18 @@ pub mod nxm {
     pub const TCP_SRC: u32 = 0x0000_1002;
     /// NXM_OF_TCP_DST: TCP destination port (2 bytes)
     pub const TCP_DST: u32 = 0x0000_1202;
+    /// NXM_OF_ARP_OP: ARP opcode (2 bytes)
+    pub const ARP_OP: u32 = 0x0000_1e02;
+    /// NXM_OF_ARP_SPA: ARP source IPv4 address (4 bytes)
+    pub const ARP_SPA: u32 = 0x0000_2004;
+    /// NXM_OF_ARP_TPA: ARP target IPv4 address (4 bytes)
+    pub const ARP_TPA: u32 = 0x0000_2204;
 
     // NXM_NX_* fields (class 0x0001) - Nicira extensions
+    /// NXM_NX_ARP_SHA: ARP source hardware address (6 bytes) - field 17
+    pub const ARP_SHA: u32 = 0x0001_2206;
+    /// NXM_NX_ARP_THA: ARP target hardware address (6 bytes) - field 18
+    pub const ARP_THA: u32 = 0x0001_2406;
     /// NXM_NX_REG0: General purpose register 0 (4 bytes)
     pub const REG0: u32 = 0x0001_0004;
     /// NXM_NX_REG1: General purpose register 1 (4 bytes)
@@ -395,6 +405,30 @@ pub enum Action {
         zone: u16,
         table: Option<u8>,
     },
+    /// Move/copy bits between fields (Nicira extension)
+    NxMove {
+        /// Source NXM field header
+        src_field: u32,
+        /// Destination NXM field header
+        dst_field: u32,
+        /// Number of bits to copy
+        n_bits: u16,
+        /// Bit offset in source field
+        src_ofs: u16,
+        /// Bit offset in destination field
+        dst_ofs: u16,
+    },
+    /// Load immediate value into field (Nicira extension)
+    NxRegLoad {
+        /// Destination NXM field header
+        dst_field: u32,
+        /// Bit offset in destination field
+        dst_ofs: u16,
+        /// Number of bits to load
+        n_bits: u16,
+        /// Value to load
+        value: u64,
+    },
 }
 
 /// Output port specification.
@@ -580,6 +614,85 @@ impl ActionList {
         self
     }
 
+    /// Move/copy bits between fields (Nicira extension).
+    ///
+    /// Copies `n_bits` bits from `src_field[src_ofs..]` to `dst_field[dst_ofs..]`.
+    /// Use NXM constants from the `nxm` module for field headers.
+    ///
+    /// # Example
+    /// ```ignore
+    /// // Copy ARP source IP to ARP target IP
+    /// actions.move_field(nxm::ARP_SPA, nxm::ARP_TPA, 32, 0, 0)
+    /// ```
+    pub fn move_field(
+        mut self,
+        src_field: u32,
+        dst_field: u32,
+        n_bits: u16,
+        src_ofs: u16,
+        dst_ofs: u16,
+    ) -> Self {
+        self.actions.push(Action::NxMove {
+            src_field,
+            dst_field,
+            n_bits,
+            src_ofs,
+            dst_ofs,
+        });
+        self
+    }
+
+    /// Load immediate value into field (Nicira extension).
+    ///
+    /// Loads `value` into `dst_field[dst_ofs..dst_ofs+n_bits]`.
+    /// Use NXM constants from the `nxm` module for field headers.
+    ///
+    /// # Example
+    /// ```ignore
+    /// // Set ARP opcode to 2 (reply)
+    /// actions.load_field(nxm::ARP_OP, 0, 16, 2)
+    /// ```
+    pub fn load_field(mut self, dst_field: u32, dst_ofs: u16, n_bits: u16, value: u64) -> Self {
+        self.actions.push(Action::NxRegLoad {
+            dst_field,
+            dst_ofs,
+            n_bits,
+            value,
+        });
+        self
+    }
+
+    /// Set ARP opcode (Nicira extension).
+    ///
+    /// Common values: 1 = request, 2 = reply
+    pub fn set_arp_op(self, opcode: u16) -> Self {
+        self.load_field(nxm::ARP_OP, 0, 16, opcode as u64)
+    }
+
+    /// Set ARP source protocol address (sender IP).
+    pub fn set_arp_spa(self, ip: u32) -> Self {
+        self.load_field(nxm::ARP_SPA, 0, 32, ip as u64)
+    }
+
+    /// Set ARP target protocol address (target IP).
+    pub fn set_arp_tpa(self, ip: u32) -> Self {
+        self.load_field(nxm::ARP_TPA, 0, 32, ip as u64)
+    }
+
+    /// Set ARP source hardware address (sender MAC).
+    ///
+    /// Note: MAC is passed as a u64 with the MAC in the lower 48 bits.
+    pub fn set_arp_sha(self, mac: u64) -> Self {
+        self.load_field(nxm::ARP_SHA, 0, 48, mac)
+    }
+
+    /// Set ARP target hardware address (target MAC).
+    ///
+    /// Note: MAC is passed as a u64 with the MAC in the lower 48 bits.
+    pub fn set_arp_tha(self, mac: u64) -> Self {
+        self.load_field(nxm::ARP_THA, 0, 48, mac)
+    }
+
     /// Get the actions.
     pub fn actions(&self) -> &[Action] {
         &self.actions
@@ -697,6 +810,12 @@ impl Action {
             Self::NxResubmit { port, table } => encode_nx_resubmit(*port, *table),
             Self::NxLearn(learn) => encode_nx_learn(learn),
             Self::NxCt { flags, zone, table } => encode_nx_ct(*flags, *zone, *table),
+            Self::NxMove { src_field, dst_field, n_bits, src_ofs, dst_ofs } => {
+                encode_nx_move(*src_field, *dst_field, *n_bits, *src_ofs, *dst_ofs)
+            }
+            Self::NxRegLoad { dst_field, dst_ofs, n_bits, value } => {
+                encode_nx_reg_load_nxm(*dst_field, *dst_ofs, *n_bits, *value)
+            }
         }
     }
 
@@ -1198,13 +1317,33 @@ pub fn encode_nx_reg_load(reg_num: u8, value: u32, start_bit: u8, n_bits: u8) ->
     buf
 }
 
+/// Encode NxRegLoad action with NXM header for loading immediate value into any field.
+///
+/// This is the more general form that accepts any NXM field header.
+/// Format: `load:value->NXM_field[ofs..ofs+n_bits]`
+fn encode_nx_reg_load_nxm(dst_field: u32, dst_ofs: u16, n_bits: u16, value: u64) -> Vec<u8> {
+    // reg_load uses subtype 7
+    // Format: NX header (10) + ofs_nbits (2) + dst (4) + value (8)
+    let mut buf = encode_nx_header(NxActionSubtype::RegLoad, 24);
+
+    // ofs_nbits: (offset << 6) | (n_bits - 1)
+    let ofs_nbits = (dst_ofs << 6) | (n_bits - 1);
+    buf.extend(ofs_nbits.to_be_bytes());
+
+    // dst: NXM header for destination field
+    buf.extend(dst_field.to_be_bytes());
+
+    // value: 64-bit value
+    buf.extend(value.to_be_bytes());
+    buf
+}
+
 /// Encode NxMove action for copying bits between fields.
 ///
 /// Format: `move:src[start..end]->dst[start..end]`
-#[allow(dead_code)]
-pub fn encode_nx_move(
-    src_field: u32, // NXM header of source field
-    dst_field: u32, // NXM header of destination field
+fn encode_nx_move(
+    src_field: u32,
+    dst_field: u32,
     n_bits: u16,
     src_ofs: u16,
     dst_ofs: u16,

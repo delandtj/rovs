@@ -15,7 +15,7 @@
 //! OPENFLOW_ADDR=tcp:127.0.0.1:6653 cargo test -p rovs-openflow -- --ignored
 //! ```
 
-use rovs_openflow::{ActionList, Flow, Match, NxLearn, VConn, CT_COMMIT};
+use rovs_openflow::{nxm, ActionList, Flow, Match, NxLearn, VConn, CT_COMMIT};
 use rovs_transport::Address;
 
 fn get_openflow_addr() -> Option<Address> {
@@ -570,4 +570,118 @@ async fn add_flow_with_ct_and_recirc() {
     conn.send_flow_sync(&delete_table1)
         .await
         .expect("Failed to delete table 1 flows");
+}
+
+#[tokio::test]
+#[ignore = "requires ovs-vswitchd"]
+async fn add_flow_with_mac_translation() {
+    let addr = get_openflow_addr().expect("OPENFLOW_ADDR not set");
+    let mut conn = VConn::connect(&addr).await.expect("Failed to connect");
+
+    // MAC addresses for translation
+    let internal_mac = [0x02, 0x00, 0x00, 0x00, 0x00, 0x01];
+    let external_mac = [0x02, 0x00, 0x00, 0x00, 0x00, 0x99];
+
+    // Flow 1: Rewrite source MAC (internal -> external)
+    let flow_src_rewrite = Flow::add()
+        .table(3)
+        .priority(100)
+        .match_fields(
+            Match::new()
+                .in_port(1)
+                .eth_src(internal_mac),
+        )
+        .actions(
+            ActionList::new()
+                .set_eth_src(external_mac)
+                .output(2),
+        );
+
+    conn.send_flow_sync(&flow_src_rewrite)
+        .await
+        .expect("Failed to add source MAC rewrite flow");
+
+    // Flow 2: Rewrite destination MAC (external -> internal)
+    let flow_dst_rewrite = Flow::add()
+        .table(3)
+        .priority(100)
+        .match_fields(
+            Match::new()
+                .in_port(2)
+                .eth_dst(external_mac),
+        )
+        .actions(
+            ActionList::new()
+                .set_eth_dst(internal_mac)
+                .output(1),
+        );
+
+    conn.send_flow_sync(&flow_dst_rewrite)
+        .await
+        .expect("Failed to add destination MAC rewrite flow");
+
+    // Clean up
+    let delete_flows = Flow::delete().table(3);
+    conn.send_flow_sync(&delete_flows)
+        .await
+        .expect("Failed to delete flows");
+}
+
+#[tokio::test]
+#[ignore = "requires ovs-vswitchd"]
+async fn add_flow_with_arp_proxy_actions() {
+    let addr = get_openflow_addr().expect("OPENFLOW_ADDR not set");
+    let mut conn = VConn::connect(&addr).await.expect("Failed to connect");
+
+    // Test NxMove and NxRegLoad actions for ARP proxy
+    // This matches ARP requests and transforms them into replies
+    let external_mac = [0x02, 0x00, 0x00, 0x00, 0x00, 0x99u8];
+    let external_ip: u32 = 0x0a000063; // 10.0.0.99
+
+    // Convert MAC to u64 for load_field
+    let mac_u64 = ((external_mac[0] as u64) << 40)
+        | ((external_mac[1] as u64) << 32)
+        | ((external_mac[2] as u64) << 24)
+        | ((external_mac[3] as u64) << 16)
+        | ((external_mac[4] as u64) << 8)
+        | (external_mac[5] as u64);
+
+    let flow = Flow::add()
+        .table(4)
+        .priority(200)
+        .match_fields(
+            Match::new()
+                .in_port(2)
+                .eth_type(0x0806) // ARP
+                .arp_op(1),       // ARP Request
+        )
+        .actions(
+            ActionList::new()
+                // Move ARP SHA -> ARP THA
+                .move_field(nxm::ARP_SHA, nxm::ARP_THA, 48, 0, 0)
+                // Move ARP SPA -> ARP TPA
+                .move_field(nxm::ARP_SPA, nxm::ARP_TPA, 32, 0, 0)
+                // Set ARP SHA to our MAC
+                .set_arp_sha(mac_u64)
+                // Set ARP SPA to our IP
+                .set_arp_spa(external_ip)
+                // Set ARP opcode to 2 (reply)
+                .set_arp_op(2)
+                // Move ETH_SRC -> ETH_DST
+                .move_field(nxm::ETH_SRC, nxm::ETH_DST, 48, 0, 0)
+                // Set ETH_SRC to our MAC
+                .set_eth_src(external_mac)
+                // Send back to input port
+                .in_port(),
+        );
+
+    conn.send_flow_sync(&flow)
+        .await
+        .expect("Failed to add ARP proxy flow");
+
+    // Clean up
+    let delete_flows = Flow::delete().table(4);
+    conn.send_flow_sync(&delete_flows)
+        .await
+        .expect("Failed to delete flows");
 }

@@ -205,6 +205,43 @@ impl Match {
         self
     }
 
+    /// Match on ARP opcode.
+    ///
+    /// Common values: 1 = request, 2 = reply
+    pub fn arp_op(mut self, opcode: u16) -> Self {
+        self.eth_type = Some(0x0806); // ARP
+        self.arp_op = Some(opcode);
+        self
+    }
+
+    /// Match on ARP source protocol address (sender IP).
+    pub fn arp_spa(mut self, addr: impl Into<Ipv4Addr>) -> Self {
+        self.eth_type = Some(0x0806); // ARP
+        self.arp_spa = Some(addr.into());
+        self
+    }
+
+    /// Match on ARP target protocol address (target IP).
+    pub fn arp_tpa(mut self, addr: impl Into<Ipv4Addr>) -> Self {
+        self.eth_type = Some(0x0806); // ARP
+        self.arp_tpa = Some(addr.into());
+        self
+    }
+
+    /// Match on ARP source hardware address (sender MAC).
+    pub fn arp_sha(mut self, addr: MacAddr) -> Self {
+        self.eth_type = Some(0x0806); // ARP
+        self.arp_sha = Some(addr);
+        self
+    }
+
+    /// Match on ARP target hardware address (target MAC).
+    pub fn arp_tha(mut self, addr: MacAddr) -> Self {
+        self.eth_type = Some(0x0806); // ARP
+        self.arp_tha = Some(addr);
+        self
+    }
+
     /// Check if this match is empty (matches all).
     pub fn is_empty(&self) -> bool {
         self.in_port.is_none()
@@ -220,6 +257,11 @@ impl Match {
             && self.udp_src.is_none()
             && self.udp_dst.is_none()
             && self.tunnel_id.is_none()
+            && self.arp_op.is_none()
+            && self.arp_spa.is_none()
+            && self.arp_tpa.is_none()
+            && self.arp_sha.is_none()
+            && self.arp_tha.is_none()
     }
 
     /// Decode a match from OpenFlow wire format.
