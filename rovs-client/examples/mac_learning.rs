@@ -1,114 +1,98 @@
 //! Example: MAC Learning with NxLearn
 //!
-//! This example demonstrates how to implement MAC learning using the NxLearn
-//! action (Nicira extension). MAC learning is a fundamental networking concept
-//! where the switch learns source MAC addresses and their associated ports,
-//! then uses that information to forward packets to the correct destination.
+//! This example demonstrates how to implement a basic MAC learning switch
+//! using the NxLearn action. When a packet arrives:
 //!
-//! The flow pipeline works as follows:
+//! 1. Table 0: Learn the source MAC -> input port mapping, then go to table 1
+//! 2. Table 1: If destination MAC is known, output to learned port; else flood
 //!
-//! Table 0 (Learning):
-//!   - For every packet, learn the source MAC and ingress port
-//!   - Store learned entries in Table 1
-//!   - Then resubmit to Table 1 for forwarding
+//! Run with:
+//!   # Start OVS container first:
+//!   ./scripts/test-with-ovs.sh start full
 //!
-//! Table 1 (Forwarding):
-//!   - Match on destination MAC (learned from previous packets)
-//!   - Output to the learned port
-//!   - Default: flood to all ports (unknown destination)
-//!
-//! Run with: cargo run --example mac_learning
+//!   # Then run the example:
+//!   OPENFLOW_ADDR=tcp:127.0.0.1:6653 cargo run --example mac_learning
 
-use rovs_client::{nxm, ActionList, Flow, NxLearn, OvsClient};
+use rovs_openflow::{nxm, ActionList, Flow, NxLearn, VConn};
+use rovs_transport::Address;
+
+fn get_openflow_addr() -> Address {
+    std::env::var("OPENFLOW_ADDR")
+        .unwrap_or_else(|_| "tcp:127.0.0.1:6653".to_string())
+        .parse()
+        .expect("Invalid OPENFLOW_ADDR")
+}
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Connect to OVS (adjust addresses as needed)
-    // For testing with the container: "tcp:127.0.0.1:6640", "tcp:127.0.0.1:6653"
-    let client = OvsClient::connect(
-        "unix:/var/run/openvswitch/db.sock",
-        "tcp:127.0.0.1:6653",
-    )
-    .await?;
+    let addr = get_openflow_addr();
+    println!("Connecting to OpenFlow at {}...", addr);
 
-    let bridge = "br-test";
+    let mut conn = VConn::connect(&addr).await?;
+    println!("Connected! OpenFlow version: {:?}", conn.version());
 
-    println!("Setting up MAC learning on bridge '{}'...\n", bridge);
+    // Clear tables 0 and 1
+    println!("\nClearing tables 0 and 1...");
+    conn.send_flow_sync(&Flow::delete().table(0)).await?;
+    conn.send_flow_sync(&Flow::delete().table(1)).await?;
 
-    // Step 1: Clear existing flows in tables 0 and 1
-    println!("Clearing existing flows...");
-    client.add_flow(bridge, Flow::delete().table(0)).await?;
-    client.add_flow(bridge, Flow::delete().table(1)).await?;
-
-    // Step 2: Add the learning flow in Table 0
+    // ==========================================================================
+    // Table 0: MAC Learning
+    // ==========================================================================
+    // For every packet, learn the mapping: src_mac -> in_port
+    // Then go to table 1 for forwarding decision
     //
-    // This flow:
-    // - Matches all packets
-    // - Learns: source MAC -> ingress port mapping
-    // - Creates entries in Table 1 that match on dst MAC and output to the learned port
-    // - Then resubmits to Table 1 for forwarding decision
-    println!("Adding learning flow in table 0...");
+    // The learn action creates entries in table 1 that match on dst_mac
+    // (copied from the current packet's src_mac) and output to the
+    // current packet's in_port.
+    println!("\nAdding MAC learning flow to table 0...");
 
-    let learn_action = NxLearn::new()
-        .table(1)                    // Install learned flows in table 1
-        .priority(100)               // Priority of learned flows
-        .idle_timeout(300)           // Learned entries expire after 5 min idle
-        .hard_timeout(0)             // No hard timeout
-        // Match spec: match dst MAC in table 1 = src MAC from this packet
-        // This means: when we see a packet with eth_src=X, create a flow
-        // in table 1 that matches eth_dst=X
-        .match_field(
-            nxm::ETH_SRC,            // Source field: packet's eth_src
-            nxm::ETH_DST,            // Destination field: match on eth_dst
-            48,                       // 48 bits (full MAC address)
-        )
-        // Load spec: load the ingress port into the output action
-        // This copies NXM_OF_IN_PORT to the output action's port field
-        .load_field(
-            nxm::IN_PORT,            // Source: packet's in_port
-            nxm::REG0,               // Destination: store in reg0 (used by output)
-            16,                       // 16 bits (port number)
-        );
+    // Learn action: create flow in table 1 that matches dst_mac and outputs to in_port
+    let learn = NxLearn::new()
+        .table(1)
+        .idle_timeout(300) // Learned entries expire after 5 minutes of inactivity
+        .priority(100)
+        // Match on destination MAC = current packet's source MAC
+        .match_field(nxm::ETH_DST, nxm::ETH_SRC, 48)
+        // Output to the port where this packet came from
+        .output_field(nxm::IN_PORT, 16);
 
     let learning_flow = Flow::add()
         .table(0)
         .priority(100)
         .actions(
             ActionList::new()
-                .learn(learn_action)
-                .resubmit_table(1),   // Continue to table 1 for forwarding
+                .learn(learn)
+                .goto_table(1),
         );
 
-    client.add_flow(bridge, learning_flow).await?;
+    conn.send_flow_sync(&learning_flow).await?;
+    println!("  Added: table=0, priority=100, actions=learn(...),goto_table:1");
 
-    // Step 3: Add default flood flow in Table 1
-    //
-    // If the destination MAC is unknown (no learned entry), flood to all ports
-    println!("Adding default flood flow in table 1...");
+    // ==========================================================================
+    // Table 1: Forwarding
+    // ==========================================================================
+    // Default rule: flood unknown destinations
+    // Learned rules (created by learn action): output to specific port
+    println!("\nAdding default flood flow to table 1...");
 
     let flood_flow = Flow::add()
         .table(1)
-        .priority(1)                  // Low priority - learned entries have priority 100
+        .priority(1) // Low priority, learned flows will have priority 100
         .actions(ActionList::new().flood());
 
-    client.add_flow(bridge, flood_flow).await?;
+    conn.send_flow_sync(&flood_flow).await?;
+    println!("  Added: table=1, priority=1, actions=flood");
 
-    // Step 4: Add table-miss flow in Table 0 (drop unmatched)
-    println!("Adding table-miss flow in table 0...");
-
-    let table_miss = Flow::add()
-        .table(0)
-        .priority(0)
-        .actions(ActionList::new()); // Empty actions = drop
-
-    client.add_flow(bridge, table_miss).await?;
-
-    println!("\nMAC learning pipeline configured successfully!");
-    println!("\nFlow summary:");
-    println!("  Table 0: Learn src MAC -> in_port, then resubmit to table 1");
-    println!("  Table 1: Forward to learned port, or flood if unknown");
-    println!("\nLearned flows will appear in table 1 as traffic flows through.");
-    println!("Use 'ovs-ofctl dump-flows {}' to view the flow tables.", bridge);
+    // ==========================================================================
+    // Summary
+    // ==========================================================================
+    println!("\n--- MAC Learning Switch Configured ---");
+    println!("Table 0: Learn src_mac -> in_port, then goto table 1");
+    println!("Table 1: Output to learned port, or flood if unknown");
+    println!("\nTo verify the flows:");
+    println!("  podman exec rovs-ovsdb-test ovs-ofctl dump-flows br-test -O OpenFlow13");
+    println!("\nWhen traffic flows through the bridge, learned entries will appear in table 1.");
 
     Ok(())
 }
