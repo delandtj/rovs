@@ -10,8 +10,8 @@ This document tracks the implementation status and roadmap for OpenFlow support 
 | Message header | `message.rs` | Done | Encode/decode for 8-byte header |
 | Message types | `message.rs` | Done | All OF 1.0-1.5 types defined |
 | OXM identifiers | `oxm.rs` | Done | Field IDs defined, header builder |
-| Match builder | `match_fields.rs` | Done | L2/L3/L4 fields with builder pattern |
-| Action types | `action.rs` | Done | 20+ actions including Nicira extensions |
+| Match builder | `match_fields.rs` | Done | L2/L3/L4/ARP fields with builder pattern |
+| Action types | `action.rs` | Done | 25+ actions including Nicira extensions |
 | FlowMod struct | `flow.rs` | Done | Builder pattern for add/delete |
 
 ### What's Missing
@@ -115,15 +115,34 @@ Actions to load/move values into registers.
   - [x] `load:value->NXM_NX_REG0[0..31]` format
   - [x] Encode: vendor action (0xffff) + Nicira ID + subtype 7
   - [x] Fields: ofs_nbits (start bit, num bits), dst (NXM header), value
+  - [x] `ActionList::load_field()` builder method
 - [x] `NxMove` - copy bits between fields
   - [x] `move:NXM_OF_ETH_SRC->NXM_NX_REG0` format
   - [x] Subtype 6
   - [x] Fields: n_bits, src_ofs, dst_ofs, src, dst
+  - [x] `ActionList::move_field()` builder method
 - [x] `NxSetField` - Nicira version of SetField for NXM fields
   - [x] Subtype 33 (reg_load2) for setting tunnel ID and other NXM fields
 - [x] Unit tests for each
 
-#### 2.6 ActionList Encoding
+#### 2.6 ARP Field Actions (Nicira Extensions)
+
+Actions for ARP proxy and ARP manipulation.
+
+- [x] NXM constants for ARP fields:
+  - [x] `ARP_OP` (NXM_OF_ARP_OP, field 15, 2 bytes)
+  - [x] `ARP_SPA` (NXM_OF_ARP_SPA, field 16, 4 bytes)
+  - [x] `ARP_TPA` (NXM_OF_ARP_TPA, field 17, 4 bytes)
+  - [x] `ARP_SHA` (NXM_NX_ARP_SHA, field 17, 6 bytes)
+  - [x] `ARP_THA` (NXM_NX_ARP_THA, field 18, 6 bytes)
+- [x] `ActionList::set_arp_op(opcode)` - Set ARP opcode (1=request, 2=reply)
+- [x] `ActionList::set_arp_spa(ip)` - Set ARP source IP
+- [x] `ActionList::set_arp_tpa(ip)` - Set ARP target IP
+- [x] `ActionList::set_arp_sha(mac)` - Set ARP source MAC
+- [x] `ActionList::set_arp_tha(mac)` - Set ARP target MAC
+- [x] Integration test: ARP proxy flow
+
+#### 2.7 ActionList Encoding
 - [x] `ActionList::encode(&self) -> Vec<u8>` - concatenate all actions
 - [x] Ensure 8-byte alignment with padding
 - [x] Unit test with multiple actions
@@ -149,6 +168,14 @@ Encode complete match structure.
 - [x] Build match header + OXM list + padding
 - [x] `fn encode(&self) -> Vec<u8>`
 - [x] Unit tests: empty match, single field, multiple fields (11 tests)
+
+#### 3.4 ARP Match Fields
+- [x] `arp_op(opcode)` - Match ARP opcode (1=request, 2=reply)
+- [x] `arp_spa(addr)` - Match ARP source protocol address (sender IP)
+- [x] `arp_tpa(addr)` - Match ARP target protocol address (target IP)
+- [x] `arp_sha(mac)` - Match ARP source hardware address (sender MAC)
+- [x] `arp_tha(mac)` - Match ARP target hardware address (target MAC)
+- [x] Auto-set eth_type=0x0806 when ARP fields used
 
 ### Phase 4: Instruction Encoding
 
@@ -250,8 +277,10 @@ Test against real OVS.
 - [x] Add flow with timeout (idle/hard)
 - [x] Add flow to specific table
 - [x] Multiple sequential flows test
+- [x] MAC translation flows (set_eth_src, set_eth_dst)
+- [x] ARP proxy with NxMove/NxRegLoad actions
 
-Total: 14 integration tests
+Total: 20 integration tests
 
 ### Phase 8: Flow Dump (Decode)
 
