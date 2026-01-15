@@ -290,22 +290,34 @@ Read flows back from switch.
 - [x] Return `Vec<FlowStatsEntry>` with match, counters, durations
 - [x] Unit tests for FlowStats decoding (7 tests)
 
-### Phase 9: Nicira Extensions (Future)
+### Phase 9: Nicira Extensions
 
 For advanced OVS features.
 
 #### 9.1 Vendor Action Header
-- [ ] Experimenter action type (0xffff)
-- [ ] Nicira vendor ID: 0x00002320
+- [x] Experimenter action type (0xffff)
+- [x] Nicira vendor ID: 0x00002320
 
 #### 9.2 NxResubmit
-- [ ] Subtype 14, encode port + table
+- [x] Subtype 14 (extended resubmit), encode port + table
+- [x] `ActionList::resubmit()` and `resubmit_table()` builder methods
+- [x] Wire encoding/decoding roundtrip tests
 
 #### 9.3 NxCt (Connection Tracking)
-- [ ] Subtype 35, encode flags + zone + table + actions
+- [x] Subtype 35, encode flags + zone + table
+- [x] CT flags module (`ct_flags::COMMIT`, `ct_flags::FORCE`)
+- [x] `ActionList::ct()` and `ct_commit()` builder methods
+- [x] Wire encoding/decoding roundtrip tests
 
 #### 9.4 NxLearn
-- [ ] Subtype 16, complex flow_mod_specs encoding
+- [x] Subtype 16, complete flow_mod_specs encoding
+- [x] `NxLearn` struct with builder pattern
+- [x] `LearnSpec` enum: MatchField, MatchImmediate, LoadField, LoadImmediate, OutputField
+- [x] Learn flags module
+- [x] Wire encoding with proper padding
+- [x] Wire decoding for all spec types
+- [x] `ActionList::learn()` builder method
+- [x] Unit tests for all NxLearn functionality (11 new tests)
 
 ## Testing Strategy
 

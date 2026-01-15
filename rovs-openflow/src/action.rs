@@ -97,6 +97,177 @@ pub enum NxActionSubtype {
     RegLoad2 = 33,
 }
 
+/// Connection tracking flags.
+pub mod ct_flags {
+    /// Commit the connection to the CT table
+    pub const COMMIT: u16 = 1 << 0;
+    /// Force commit even if already tracked
+    pub const FORCE: u16 = 1 << 1;
+}
+
+/// CT commit flag (shorthand).
+pub const CT_COMMIT: u16 = ct_flags::COMMIT;
+
+/// Learn action flags.
+pub mod learn_flags {
+    /// Send flow removed message when learned flow expires
+    pub const SEND_FLOW_REM: u16 = 1 << 0;
+    /// Delete matching flows instead of adding
+    pub const DELETE_LEARNED: u16 = 1 << 1;
+    /// Write result to the action set (vs apply immediately)
+    pub const WRITE_RESULT: u16 = 1 << 2;
+}
+
+/// NxLearn action (Nicira extension).
+///
+/// The learn action creates flows dynamically based on packet content.
+/// This is commonly used for MAC learning in OVS.
+#[derive(Debug, Clone, Default)]
+pub struct NxLearn {
+    /// Idle timeout for learned flows (0 = no timeout)
+    pub idle_timeout: u16,
+    /// Hard timeout for learned flows (0 = no timeout)
+    pub hard_timeout: u16,
+    /// Priority of learned flows
+    pub priority: u16,
+    /// Cookie for learned flows
+    pub cookie: u64,
+    /// Learn flags
+    pub flags: u16,
+    /// Table to install learned flows
+    pub table_id: u8,
+    /// Idle timeout when FIN received
+    pub fin_idle_timeout: u16,
+    /// Hard timeout when FIN received
+    pub fin_hard_timeout: u16,
+    /// Flow modification specs (match and action specifications)
+    pub specs: Vec<LearnSpec>,
+}
+
+/// A single learn specification.
+///
+/// Learn specs define how to construct match fields and actions
+/// in the learned flow.
+#[derive(Debug, Clone)]
+pub enum LearnSpec {
+    /// Match: copy field from packet to match field
+    MatchField {
+        /// Source field
+        src_field: u32,
+        /// Destination field (in learned flow's match)
+        dst_field: u32,
+        /// Number of bits
+        n_bits: u16,
+    },
+    /// Match: use immediate value
+    MatchImmediate {
+        /// Destination field
+        dst_field: u32,
+        /// Value to match
+        value: Vec<u8>,
+        /// Number of bits
+        n_bits: u16,
+    },
+    /// Action: copy field from packet to action's field
+    LoadField {
+        /// Source field
+        src_field: u32,
+        /// Destination field (in learned flow's actions)
+        dst_field: u32,
+        /// Number of bits
+        n_bits: u16,
+    },
+    /// Action: load immediate value
+    LoadImmediate {
+        /// Destination field
+        dst_field: u32,
+        /// Value to load
+        value: Vec<u8>,
+        /// Number of bits
+        n_bits: u16,
+    },
+    /// Output to port from field
+    OutputField {
+        /// Source field containing port number
+        src_field: u32,
+        /// Number of bits
+        n_bits: u16,
+    },
+}
+
+impl NxLearn {
+    /// Create a new learn action with defaults.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Set idle timeout for learned flows.
+    pub fn idle_timeout(mut self, timeout: u16) -> Self {
+        self.idle_timeout = timeout;
+        self
+    }
+
+    /// Set hard timeout for learned flows.
+    pub fn hard_timeout(mut self, timeout: u16) -> Self {
+        self.hard_timeout = timeout;
+        self
+    }
+
+    /// Set priority for learned flows.
+    pub fn priority(mut self, priority: u16) -> Self {
+        self.priority = priority;
+        self
+    }
+
+    /// Set cookie for learned flows.
+    pub fn cookie(mut self, cookie: u64) -> Self {
+        self.cookie = cookie;
+        self
+    }
+
+    /// Set table for learned flows.
+    pub fn table(mut self, table_id: u8) -> Self {
+        self.table_id = table_id;
+        self
+    }
+
+    /// Set flags.
+    pub fn flags(mut self, flags: u16) -> Self {
+        self.flags = flags;
+        self
+    }
+
+    /// Add a spec to match a field from the packet.
+    pub fn match_field(mut self, src_field: u32, dst_field: u32, n_bits: u16) -> Self {
+        self.specs.push(LearnSpec::MatchField { src_field, dst_field, n_bits });
+        self
+    }
+
+    /// Add a spec to match an immediate value.
+    pub fn match_immediate(mut self, dst_field: u32, value: Vec<u8>, n_bits: u16) -> Self {
+        self.specs.push(LearnSpec::MatchImmediate { dst_field, value, n_bits });
+        self
+    }
+
+    /// Add a spec to load a field from packet into action.
+    pub fn load_field(mut self, src_field: u32, dst_field: u32, n_bits: u16) -> Self {
+        self.specs.push(LearnSpec::LoadField { src_field, dst_field, n_bits });
+        self
+    }
+
+    /// Add a spec to load an immediate value into action.
+    pub fn load_immediate(mut self, dst_field: u32, value: Vec<u8>, n_bits: u16) -> Self {
+        self.specs.push(LearnSpec::LoadImmediate { dst_field, value, n_bits });
+        self
+    }
+
+    /// Add a spec to output to port from field.
+    pub fn output_field(mut self, src_field: u32, n_bits: u16) -> Self {
+        self.specs.push(LearnSpec::OutputField { src_field, n_bits });
+        self
+    }
+}
+
 /// Reserved OpenFlow port numbers.
 #[allow(dead_code)]
 pub mod port {
@@ -167,11 +338,7 @@ pub enum Action {
         table: Option<u8>,
     },
     /// Learn action (Nicira extension)
-    ///
-    /// TODO: Add learn_spec fields: idle_timeout, hard_timeout, priority, cookie,
-    /// flags, table_id, fin_idle_timeout, fin_hard_timeout, and flow_mod_specs
-    /// for field assignments and match criteria.
-    NxLearn,
+    NxLearn(NxLearn),
     /// Conntrack action (Nicira extension)
     NxCt {
         flags: u16,
@@ -281,6 +448,61 @@ impl ActionList {
     /// Decrement TTL.
     pub fn dec_ttl(mut self) -> Self {
         self.actions.push(Action::DecTtl);
+        self
+    }
+
+    /// Set tunnel ID (Nicira extension).
+    pub fn set_tunnel_id(mut self, tunnel_id: u64) -> Self {
+        self.actions.push(Action::SetTunnelId(tunnel_id));
+        self
+    }
+
+    /// Output to group table.
+    pub fn group(mut self, group_id: u32) -> Self {
+        self.actions.push(Action::Group(group_id));
+        self
+    }
+
+    /// Resubmit to another table (Nicira extension).
+    ///
+    /// - `port`: Input port to use (None = current input port)
+    /// - `table`: Table to resubmit to (None = current table)
+    pub fn resubmit(mut self, port: Option<u16>, table: Option<u8>) -> Self {
+        self.actions.push(Action::NxResubmit { port, table });
+        self
+    }
+
+    /// Resubmit to a specific table (Nicira extension).
+    ///
+    /// Convenience method for `resubmit(None, Some(table))`.
+    pub fn resubmit_table(mut self, table: u8) -> Self {
+        self.actions.push(Action::NxResubmit { port: None, table: Some(table) });
+        self
+    }
+
+    /// Connection tracking action (Nicira extension).
+    ///
+    /// - `flags`: CT flags (commit, force, etc.)
+    /// - `zone`: CT zone ID
+    /// - `table`: Table to recirculate to after CT (None = no recirc)
+    pub fn ct(mut self, flags: u16, zone: u16, table: Option<u8>) -> Self {
+        self.actions.push(Action::NxCt { flags, zone, table });
+        self
+    }
+
+    /// Connection tracking with commit (Nicira extension).
+    ///
+    /// Commits the connection to the connection tracking table.
+    pub fn ct_commit(mut self, zone: u16) -> Self {
+        self.actions.push(Action::NxCt { flags: CT_COMMIT, zone, table: None });
+        self
+    }
+
+    /// Learn action (Nicira extension).
+    ///
+    /// Creates flows dynamically based on packet content.
+    pub fn learn(mut self, learn: NxLearn) -> Self {
+        self.actions.push(Action::NxLearn(learn));
         self
     }
 
@@ -399,7 +621,7 @@ impl Action {
             Self::Group(group_id) => encode_group(*group_id),
             Self::SetTunnelId(tun_id) => encode_set_tunnel_id(*tun_id),
             Self::NxResubmit { port, table } => encode_nx_resubmit(*port, *table),
-            Self::NxLearn => todo!("NxLearn encoding not implemented"),
+            Self::NxLearn(learn) => encode_nx_learn(learn),
             Self::NxCt { flags, zone, table } => encode_nx_ct(*flags, *zone, *table),
         }
     }
@@ -777,6 +999,49 @@ fn decode_nicira_action(data: &[u8]) -> crate::Result<Action> {
                 Ok(Action::Drop)
             }
         }
+        s if s == NxActionSubtype::Learn as u16 => {
+            // Learn: subtype (2) + idle_timeout (2) + hard_timeout (2) + priority (2)
+            //        + cookie (8) + flags (2) + table_id (1) + pad (1)
+            //        + fin_idle_timeout (2) + fin_hard_timeout (2) + specs (variable)
+            if data.len() < 22 {
+                return Err(crate::Error::Parse("learn action too short".into()));
+            }
+            let idle_timeout = u16::from_be_bytes([data[2], data[3]]);
+            let hard_timeout = u16::from_be_bytes([data[4], data[5]]);
+            let priority = u16::from_be_bytes([data[6], data[7]]);
+            let cookie = u64::from_be_bytes([
+                data[8], data[9], data[10], data[11],
+                data[12], data[13], data[14], data[15],
+            ]);
+            let flags = u16::from_be_bytes([data[16], data[17]]);
+            let table_id = data[18];
+            // data[19] is padding
+            let fin_idle_timeout = u16::from_be_bytes([data[20], data[21]]);
+            let fin_hard_timeout = if data.len() > 23 {
+                u16::from_be_bytes([data[22], data[23]])
+            } else {
+                0
+            };
+
+            // Decode specs (simplified - full decoding would parse the spec headers)
+            let specs = if data.len() > 24 {
+                decode_learn_specs(&data[24..])
+            } else {
+                Vec::new()
+            };
+
+            Ok(Action::NxLearn(NxLearn {
+                idle_timeout,
+                hard_timeout,
+                priority,
+                cookie,
+                flags,
+                table_id,
+                fin_idle_timeout,
+                fin_hard_timeout,
+                specs,
+            }))
+        }
         _ => {
             // Unknown Nicira subtype
             Ok(Action::Drop)
@@ -879,6 +1144,241 @@ pub fn encode_nx_move(
     buf.extend(src_field.to_be_bytes());
     buf.extend(dst_field.to_be_bytes());
     buf
+}
+
+/// Encode NxLearn action for creating flows dynamically.
+///
+/// Wire format (variable length):
+/// ```text
+/// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+/// |         type (0xffff)       |         length                  |
+/// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+/// |                      vendor (0x00002320)                      |
+/// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+/// |       subtype (16)          |         idle_timeout            |
+/// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+/// |       hard_timeout          |          priority               |
+/// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+/// |                            cookie                             |
+/// |                                                               |
+/// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+/// |           flags             |  table_id   |       pad         |
+/// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+/// |      fin_idle_timeout       |       fin_hard_timeout          |
+/// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+/// |                   flow_mod_specs (variable)                   |
+/// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+/// ```
+fn encode_nx_learn(learn: &NxLearn) -> Vec<u8> {
+    // Calculate specs size
+    let specs_bytes = encode_learn_specs(&learn.specs);
+
+    // Total length: NX header (10) + fields (22) + specs + padding
+    let header_and_fields = 32; // 10 (header) + 22 (fixed fields)
+    let total_len = header_and_fields + specs_bytes.len();
+    // Pad to 8-byte boundary
+    let padded_len = (total_len + 7) & !7;
+
+    // Build action
+    let mut buf = Vec::with_capacity(padded_len);
+
+    // Action header
+    buf.extend((ActionType::Experimenter as u16).to_be_bytes());
+    buf.extend((padded_len as u16).to_be_bytes());
+    buf.extend(NICIRA_VENDOR_ID.to_be_bytes());
+    buf.extend((NxActionSubtype::Learn as u16).to_be_bytes());
+
+    // Learn fields
+    buf.extend(learn.idle_timeout.to_be_bytes());
+    buf.extend(learn.hard_timeout.to_be_bytes());
+    buf.extend(learn.priority.to_be_bytes());
+    buf.extend(learn.cookie.to_be_bytes());
+    buf.extend(learn.flags.to_be_bytes());
+    buf.push(learn.table_id);
+    buf.push(0); // pad
+    buf.extend(learn.fin_idle_timeout.to_be_bytes());
+    buf.extend(learn.fin_hard_timeout.to_be_bytes());
+
+    // Specs
+    buf.extend(specs_bytes);
+
+    // Padding
+    buf.resize(padded_len, 0);
+    buf
+}
+
+/// Learn spec header bits.
+mod learn_spec_header {
+    /// Match from field (src = packet field, dst = match field)
+    pub const SRC_FIELD: u16 = 0 << 13;
+    /// Match from immediate value
+    pub const SRC_IMMEDIATE: u16 = 1 << 13;
+    /// Load from field to action field
+    pub const DST_MATCH: u16 = 0 << 11;
+    /// Load to output action
+    pub const DST_LOAD: u16 = 1 << 11;
+    /// Output to port
+    pub const DST_OUTPUT: u16 = 2 << 11;
+}
+
+/// Encode learn specs to wire format.
+fn encode_learn_specs(specs: &[LearnSpec]) -> Vec<u8> {
+    let mut buf = Vec::new();
+
+    for spec in specs {
+        match spec {
+            LearnSpec::MatchField { src_field, dst_field, n_bits } => {
+                // Header: src=field, dst=match
+                let header = learn_spec_header::SRC_FIELD
+                    | learn_spec_header::DST_MATCH
+                    | n_bits;
+                buf.extend(header.to_be_bytes());
+                buf.extend(src_field.to_be_bytes());
+                buf.extend(dst_field.to_be_bytes());
+            }
+            LearnSpec::MatchImmediate { dst_field, value, n_bits } => {
+                // Header: src=immediate, dst=match
+                let header = learn_spec_header::SRC_IMMEDIATE
+                    | learn_spec_header::DST_MATCH
+                    | n_bits;
+                buf.extend(header.to_be_bytes());
+                // Immediate value (padded to 2-byte chunks)
+                let value_len = (*n_bits as usize).div_ceil(16) * 2;
+                let mut padded_value = vec![0u8; value_len];
+                let copy_len = value.len().min(value_len);
+                padded_value[value_len - copy_len..].copy_from_slice(&value[..copy_len]);
+                buf.extend(padded_value);
+                buf.extend(dst_field.to_be_bytes());
+            }
+            LearnSpec::LoadField { src_field, dst_field, n_bits } => {
+                // Header: src=field, dst=load
+                let header = learn_spec_header::SRC_FIELD
+                    | learn_spec_header::DST_LOAD
+                    | n_bits;
+                buf.extend(header.to_be_bytes());
+                buf.extend(src_field.to_be_bytes());
+                buf.extend(dst_field.to_be_bytes());
+            }
+            LearnSpec::LoadImmediate { dst_field, value, n_bits } => {
+                // Header: src=immediate, dst=load
+                let header = learn_spec_header::SRC_IMMEDIATE
+                    | learn_spec_header::DST_LOAD
+                    | n_bits;
+                buf.extend(header.to_be_bytes());
+                // Immediate value
+                let value_len = (*n_bits as usize).div_ceil(16) * 2;
+                let mut padded_value = vec![0u8; value_len];
+                let copy_len = value.len().min(value_len);
+                padded_value[value_len - copy_len..].copy_from_slice(&value[..copy_len]);
+                buf.extend(padded_value);
+                buf.extend(dst_field.to_be_bytes());
+            }
+            LearnSpec::OutputField { src_field, n_bits } => {
+                // Header: src=field, dst=output
+                let header = learn_spec_header::SRC_FIELD
+                    | learn_spec_header::DST_OUTPUT
+                    | n_bits;
+                buf.extend(header.to_be_bytes());
+                buf.extend(src_field.to_be_bytes());
+            }
+        }
+    }
+
+    buf
+}
+
+/// Decode learn specs from wire format.
+fn decode_learn_specs(data: &[u8]) -> Vec<LearnSpec> {
+    let mut specs = Vec::new();
+    let mut offset = 0;
+
+    while offset + 2 <= data.len() {
+        let header = u16::from_be_bytes([data[offset], data[offset + 1]]);
+        if header == 0 {
+            break; // End of specs
+        }
+        offset += 2;
+
+        let n_bits = header & 0x07ff; // Lower 11 bits
+        let src_type = (header >> 13) & 0x01; // Bit 13: 0=field, 1=immediate
+        let dst_type = (header >> 11) & 0x03; // Bits 11-12: 0=match, 1=load, 2=output
+
+        match (src_type, dst_type) {
+            (0, 0) => {
+                // MatchField: src_field (4) + dst_field (4)
+                if offset + 8 > data.len() {
+                    break;
+                }
+                let src_field = u32::from_be_bytes([
+                    data[offset], data[offset + 1], data[offset + 2], data[offset + 3],
+                ]);
+                let dst_field = u32::from_be_bytes([
+                    data[offset + 4], data[offset + 5], data[offset + 6], data[offset + 7],
+                ]);
+                offset += 8;
+                specs.push(LearnSpec::MatchField { src_field, dst_field, n_bits });
+            }
+            (1, 0) => {
+                // MatchImmediate: value (variable) + dst_field (4)
+                let value_len = (n_bits as usize).div_ceil(16) * 2;
+                if offset + value_len + 4 > data.len() {
+                    break;
+                }
+                let value = data[offset..offset + value_len].to_vec();
+                offset += value_len;
+                let dst_field = u32::from_be_bytes([
+                    data[offset], data[offset + 1], data[offset + 2], data[offset + 3],
+                ]);
+                offset += 4;
+                specs.push(LearnSpec::MatchImmediate { dst_field, value, n_bits });
+            }
+            (0, 1) => {
+                // LoadField: src_field (4) + dst_field (4)
+                if offset + 8 > data.len() {
+                    break;
+                }
+                let src_field = u32::from_be_bytes([
+                    data[offset], data[offset + 1], data[offset + 2], data[offset + 3],
+                ]);
+                let dst_field = u32::from_be_bytes([
+                    data[offset + 4], data[offset + 5], data[offset + 6], data[offset + 7],
+                ]);
+                offset += 8;
+                specs.push(LearnSpec::LoadField { src_field, dst_field, n_bits });
+            }
+            (1, 1) => {
+                // LoadImmediate: value (variable) + dst_field (4)
+                let value_len = (n_bits as usize).div_ceil(16) * 2;
+                if offset + value_len + 4 > data.len() {
+                    break;
+                }
+                let value = data[offset..offset + value_len].to_vec();
+                offset += value_len;
+                let dst_field = u32::from_be_bytes([
+                    data[offset], data[offset + 1], data[offset + 2], data[offset + 3],
+                ]);
+                offset += 4;
+                specs.push(LearnSpec::LoadImmediate { dst_field, value, n_bits });
+            }
+            (0, 2) => {
+                // OutputField: src_field (4)
+                if offset + 4 > data.len() {
+                    break;
+                }
+                let src_field = u32::from_be_bytes([
+                    data[offset], data[offset + 1], data[offset + 2], data[offset + 3],
+                ]);
+                offset += 4;
+                specs.push(LearnSpec::OutputField { src_field, n_bits });
+            }
+            _ => {
+                // Unknown spec type, skip
+                break;
+            }
+        }
+    }
+
+    specs
 }
 
 // ============================================================================
@@ -1476,5 +1976,200 @@ mod tests {
         assert_eq!(ActionType::try_from(25).unwrap(), ActionType::SetField);
         assert_eq!(ActionType::try_from(0xffff).unwrap(), ActionType::Experimenter);
         assert!(ActionType::try_from(99).is_err());
+    }
+
+    // Nicira extension tests
+
+    #[test]
+    fn resubmit_table_action_roundtrip() {
+        let action = Action::NxResubmit {
+            port: None,
+            table: Some(5),
+        };
+        let encoded = action.encode();
+        let (decoded, len) = Action::decode(&encoded).unwrap();
+        assert_eq!(len, encoded.len());
+        match decoded {
+            Action::NxResubmit { port, table } => {
+                assert_eq!(port, None);
+                assert_eq!(table, Some(5));
+            }
+            _ => panic!("expected NxResubmit action"),
+        }
+    }
+
+    #[test]
+    fn ct_action_roundtrip_with_table() {
+        let action = Action::NxCt {
+            flags: CT_COMMIT,
+            zone: 100,
+            table: Some(10),
+        };
+        let encoded = action.encode();
+        let (decoded, len) = Action::decode(&encoded).unwrap();
+        assert_eq!(len, encoded.len());
+        match decoded {
+            Action::NxCt { flags, zone, table } => {
+                assert_eq!(flags, CT_COMMIT);
+                assert_eq!(zone, 100);
+                assert_eq!(table, Some(10));
+            }
+            _ => panic!("expected NxCt action"),
+        }
+    }
+
+    #[test]
+    fn action_list_resubmit_table() {
+        let list = ActionList::new().resubmit_table(10);
+        assert_eq!(list.len(), 1);
+        match &list.actions()[0] {
+            Action::NxResubmit { port, table } => {
+                assert_eq!(*port, None);
+                assert_eq!(*table, Some(10));
+            }
+            _ => panic!("expected NxResubmit"),
+        }
+    }
+
+    #[test]
+    fn action_list_ct_commit() {
+        let list = ActionList::new().ct_commit(50);
+        assert_eq!(list.len(), 1);
+        match &list.actions()[0] {
+            Action::NxCt { flags, zone, table } => {
+                assert_eq!(*flags, CT_COMMIT);
+                assert_eq!(*zone, 50);
+                assert_eq!(*table, None);
+            }
+            _ => panic!("expected NxCt"),
+        }
+    }
+
+    #[test]
+    fn action_list_ct_with_recirc() {
+        let list = ActionList::new().ct(CT_COMMIT, 100, Some(5));
+        assert_eq!(list.len(), 1);
+        match &list.actions()[0] {
+            Action::NxCt { flags, zone, table } => {
+                assert_eq!(*flags, CT_COMMIT);
+                assert_eq!(*zone, 100);
+                assert_eq!(*table, Some(5));
+            }
+            _ => panic!("expected NxCt"),
+        }
+    }
+
+    #[test]
+    fn nx_learn_builder() {
+        let learn = NxLearn::new()
+            .idle_timeout(300)
+            .hard_timeout(600)
+            .priority(100)
+            .table(5)
+            .cookie(0x1234);
+
+        assert_eq!(learn.idle_timeout, 300);
+        assert_eq!(learn.hard_timeout, 600);
+        assert_eq!(learn.priority, 100);
+        assert_eq!(learn.table_id, 5);
+        assert_eq!(learn.cookie, 0x1234);
+    }
+
+    #[test]
+    fn nx_learn_with_specs() {
+        let learn = NxLearn::new()
+            .table(10)
+            .match_field(0x00010006, 0x00010006, 48) // eth_src -> eth_src
+            .load_immediate(0x00000404, vec![0, 0, 0, 1], 32); // output port 1
+
+        assert_eq!(learn.table_id, 10);
+        assert_eq!(learn.specs.len(), 2);
+        match &learn.specs[0] {
+            LearnSpec::MatchField {
+                src_field,
+                dst_field,
+                n_bits,
+            } => {
+                assert_eq!(src_field, &0x00010006);
+                assert_eq!(dst_field, &0x00010006);
+                assert_eq!(n_bits, &48);
+            }
+            _ => panic!("expected MatchField"),
+        }
+        match &learn.specs[1] {
+            LearnSpec::LoadImmediate {
+                dst_field,
+                value,
+                n_bits,
+            } => {
+                assert_eq!(dst_field, &0x00000404);
+                assert_eq!(value, &[0, 0, 0, 1]);
+                assert_eq!(n_bits, &32);
+            }
+            _ => panic!("expected LoadImmediate"),
+        }
+    }
+
+    #[test]
+    fn nx_learn_action_roundtrip() {
+        let learn = NxLearn::new()
+            .idle_timeout(300)
+            .hard_timeout(600)
+            .priority(50)
+            .table(5)
+            .cookie(0xabcd);
+
+        let action = Action::NxLearn(learn);
+        let encoded = action.encode();
+        let (decoded, len) = Action::decode(&encoded).unwrap();
+        assert_eq!(len, encoded.len());
+        match decoded {
+            Action::NxLearn(l) => {
+                assert_eq!(l.idle_timeout, 300);
+                assert_eq!(l.hard_timeout, 600);
+                assert_eq!(l.priority, 50);
+                assert_eq!(l.table_id, 5);
+                assert_eq!(l.cookie, 0xabcd);
+            }
+            _ => panic!("expected NxLearn action"),
+        }
+    }
+
+    #[test]
+    fn action_list_learn_builder() {
+        let learn = NxLearn::new().table(10).priority(100);
+        let list = ActionList::new().learn(learn);
+        assert_eq!(list.len(), 1);
+        match &list.actions()[0] {
+            Action::NxLearn(l) => {
+                assert_eq!(l.table_id, 10);
+                assert_eq!(l.priority, 100);
+            }
+            _ => panic!("expected NxLearn"),
+        }
+    }
+
+    #[test]
+    fn action_list_set_tunnel_id() {
+        let list = ActionList::new().set_tunnel_id(0x123456789abc);
+        assert_eq!(list.len(), 1);
+        match &list.actions()[0] {
+            Action::SetTunnelId(tun_id) => {
+                assert_eq!(*tun_id, 0x123456789abc);
+            }
+            _ => panic!("expected SetTunnelId"),
+        }
+    }
+
+    #[test]
+    fn action_list_group() {
+        let list = ActionList::new().group(42);
+        assert_eq!(list.len(), 1);
+        match &list.actions()[0] {
+            Action::Group(group_id) => {
+                assert_eq!(*group_id, 42);
+            }
+            _ => panic!("expected Group"),
+        }
     }
 }
