@@ -15,7 +15,7 @@
 //! OPENFLOW_ADDR=tcp:127.0.0.1:6653 cargo test -p rovs-openflow -- --ignored
 //! ```
 
-use rovs_openflow::{ActionList, Flow, Match, VConn};
+use rovs_openflow::{ActionList, Flow, Match, NxLearn, VConn, CT_COMMIT};
 use rovs_transport::Address;
 
 fn get_openflow_addr() -> Option<Address> {
@@ -395,4 +395,179 @@ async fn delete_all_flows_in_table() {
     conn.send_flow_sync(&delete_all)
         .await
         .expect("Failed to delete all flows in table");
+}
+
+#[tokio::test]
+#[ignore = "requires ovs-vswitchd"]
+async fn add_flow_with_learn_action() {
+    let addr = get_openflow_addr().expect("OPENFLOW_ADDR not set");
+    let mut conn = VConn::connect(&addr).await.expect("Failed to connect");
+
+    // Create a MAC learning flow:
+    // Learns eth_src from incoming packets and installs a flow in table 10
+    // that matches on eth_dst and outputs to the learned in_port
+    let learn = NxLearn::new()
+        .table(10)
+        .priority(100)
+        .idle_timeout(300)
+        .hard_timeout(600);
+
+    let flow = Flow::add()
+        .table(0)
+        .priority(500)
+        .match_fields(Match::new().in_port(1))
+        .actions(
+            ActionList::new()
+                .learn(learn)
+                .output(2),
+        );
+
+    conn.send_flow_sync(&flow)
+        .await
+        .expect("Failed to add flow with learn action");
+
+    // Clean up
+    let delete_flow = Flow::delete()
+        .table(0)
+        .priority(500)
+        .match_fields(Match::new().in_port(1));
+
+    conn.send_flow_sync(&delete_flow)
+        .await
+        .expect("Failed to delete flow");
+}
+
+#[tokio::test]
+#[ignore = "requires ovs-vswitchd"]
+async fn add_flow_with_resubmit() {
+    let addr = get_openflow_addr().expect("OPENFLOW_ADDR not set");
+    let mut conn = VConn::connect(&addr).await.expect("Failed to connect");
+
+    // Create a flow that resubmits to table 5
+    let flow = Flow::add()
+        .table(0)
+        .priority(450)
+        .match_fields(Match::new().in_port(1))
+        .actions(ActionList::new().resubmit_table(5));
+
+    conn.send_flow_sync(&flow)
+        .await
+        .expect("Failed to add flow with resubmit");
+
+    // Add a flow in table 5 to complete the pipeline
+    let flow_table5 = Flow::add()
+        .table(5)
+        .priority(100)
+        .actions(ActionList::new().output(2));
+
+    conn.send_flow_sync(&flow_table5)
+        .await
+        .expect("Failed to add flow in table 5");
+
+    // Clean up both flows
+    let delete_flow = Flow::delete()
+        .table(0)
+        .priority(450)
+        .match_fields(Match::new().in_port(1));
+
+    conn.send_flow_sync(&delete_flow)
+        .await
+        .expect("Failed to delete flow");
+
+    let delete_table5 = Flow::delete().table(5);
+    conn.send_flow_sync(&delete_table5)
+        .await
+        .expect("Failed to delete table 5 flows");
+}
+
+#[tokio::test]
+#[ignore = "requires ovs-vswitchd"]
+async fn add_flow_with_ct_commit() {
+    let addr = get_openflow_addr().expect("OPENFLOW_ADDR not set");
+    let mut conn = VConn::connect(&addr).await.expect("Failed to connect");
+
+    // Create a flow that commits connections to connection tracking
+    let flow = Flow::add()
+        .table(0)
+        .priority(550)
+        .match_fields(
+            Match::new()
+                .in_port(1)
+                .eth_type(0x0800), // IPv4
+        )
+        .actions(
+            ActionList::new()
+                .ct_commit(0) // zone 0
+                .output(2),
+        );
+
+    conn.send_flow_sync(&flow)
+        .await
+        .expect("Failed to add flow with ct_commit");
+
+    // Clean up
+    let delete_flow = Flow::delete()
+        .table(0)
+        .priority(550)
+        .match_fields(
+            Match::new()
+                .in_port(1)
+                .eth_type(0x0800),
+        );
+
+    conn.send_flow_sync(&delete_flow)
+        .await
+        .expect("Failed to delete flow");
+}
+
+#[tokio::test]
+#[ignore = "requires ovs-vswitchd"]
+async fn add_flow_with_ct_and_recirc() {
+    let addr = get_openflow_addr().expect("OPENFLOW_ADDR not set");
+    let mut conn = VConn::connect(&addr).await.expect("Failed to connect");
+
+    // Create a flow that does CT and recirculates to table 1
+    let flow = Flow::add()
+        .table(0)
+        .priority(600)
+        .match_fields(
+            Match::new()
+                .in_port(1)
+                .eth_type(0x0800), // IPv4
+        )
+        .actions(ActionList::new().ct(CT_COMMIT, 100, Some(1)));
+
+    conn.send_flow_sync(&flow)
+        .await
+        .expect("Failed to add flow with ct+recirc");
+
+    // Add a flow in table 1 to handle recirculated packets
+    let flow_table1 = Flow::add()
+        .table(1)
+        .priority(100)
+        .match_fields(Match::new().eth_type(0x0800))
+        .actions(ActionList::new().output(2));
+
+    conn.send_flow_sync(&flow_table1)
+        .await
+        .expect("Failed to add flow in table 1");
+
+    // Clean up
+    let delete_flow = Flow::delete()
+        .table(0)
+        .priority(600)
+        .match_fields(
+            Match::new()
+                .in_port(1)
+                .eth_type(0x0800),
+        );
+
+    conn.send_flow_sync(&delete_flow)
+        .await
+        .expect("Failed to delete flow");
+
+    let delete_table1 = Flow::delete().table(1);
+    conn.send_flow_sync(&delete_table1)
+        .await
+        .expect("Failed to delete table 1 flows");
 }
