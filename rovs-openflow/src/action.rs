@@ -118,6 +118,56 @@ pub mod learn_flags {
     pub const WRITE_RESULT: u16 = 1 << 2;
 }
 
+/// NXM/OXM field header constants for use with NxLearn specs.
+///
+/// Field header format: `(class << 16) | (field << 9) | length`
+///
+/// Common classes:
+/// - `0x0000` (NXM_OF_*): Legacy OpenFlow 1.0 compatible fields
+/// - `0x0001` (NXM_NX_*): Nicira extension fields
+/// - `0x8000` (OXM_OF_*): OpenFlow 1.3+ basic fields
+pub mod nxm {
+    // NXM_OF_* fields (class 0x0000) - Legacy OpenFlow fields
+    /// NXM_OF_IN_PORT: Ingress port (2 bytes)
+    pub const IN_PORT: u32 = 0x0000_0002;
+    /// NXM_OF_ETH_DST: Destination MAC address (6 bytes)
+    pub const ETH_DST: u32 = 0x0000_0206;
+    /// NXM_OF_ETH_SRC: Source MAC address (6 bytes)
+    pub const ETH_SRC: u32 = 0x0000_0406;
+    /// NXM_OF_ETH_TYPE: Ethertype (2 bytes)
+    pub const ETH_TYPE: u32 = 0x0000_0602;
+    /// NXM_OF_VLAN_TCI: VLAN tag control information (2 bytes)
+    pub const VLAN_TCI: u32 = 0x0000_0802;
+    /// NXM_OF_IP_PROTO: IP protocol (1 byte)
+    pub const IP_PROTO: u32 = 0x0000_0a01;
+    /// NXM_OF_IP_SRC: IPv4 source address (4 bytes)
+    pub const IP_SRC: u32 = 0x0000_0c04;
+    /// NXM_OF_IP_DST: IPv4 destination address (4 bytes)
+    pub const IP_DST: u32 = 0x0000_0e04;
+    /// NXM_OF_TCP_SRC: TCP source port (2 bytes)
+    pub const TCP_SRC: u32 = 0x0000_1002;
+    /// NXM_OF_TCP_DST: TCP destination port (2 bytes)
+    pub const TCP_DST: u32 = 0x0000_1202;
+
+    // NXM_NX_* fields (class 0x0001) - Nicira extensions
+    /// NXM_NX_REG0: General purpose register 0 (4 bytes)
+    pub const REG0: u32 = 0x0001_0004;
+    /// NXM_NX_REG1: General purpose register 1 (4 bytes)
+    pub const REG1: u32 = 0x0001_0204;
+    /// NXM_NX_REG2: General purpose register 2 (4 bytes)
+    pub const REG2: u32 = 0x0001_0404;
+    /// NXM_NX_TUN_ID: Tunnel ID (8 bytes)
+    pub const TUN_ID: u32 = 0x0001_2008;
+
+    // OXM_OF_* fields (class 0x8000) - OpenFlow 1.3+
+    /// OXM_OF_IN_PORT: Ingress port (4 bytes)
+    pub const OXM_IN_PORT: u32 = 0x8000_0004;
+    /// OXM_OF_ETH_DST: Destination MAC address (6 bytes)
+    pub const OXM_ETH_DST: u32 = 0x8000_0606;
+    /// OXM_OF_ETH_SRC: Source MAC address (6 bytes)
+    pub const OXM_ETH_SRC: u32 = 0x8000_0806;
+}
+
 /// NxLearn action (Nicira extension).
 ///
 /// The learn action creates flows dynamically based on packet content.
@@ -448,6 +498,30 @@ impl ActionList {
     /// Decrement TTL.
     pub fn dec_ttl(mut self) -> Self {
         self.actions.push(Action::DecTtl);
+        self
+    }
+
+    /// Output to all ports except input port (flood).
+    pub fn flood(mut self) -> Self {
+        self.actions.push(Action::Output(OutputPort::Flood));
+        self
+    }
+
+    /// Output to all ports.
+    pub fn all(mut self) -> Self {
+        self.actions.push(Action::Output(OutputPort::All));
+        self
+    }
+
+    /// Output using normal L2/L3 switching.
+    pub fn normal(mut self) -> Self {
+        self.actions.push(Action::Output(OutputPort::Normal));
+        self
+    }
+
+    /// Output to ingress port.
+    pub fn in_port(mut self) -> Self {
+        self.actions.push(Action::Output(OutputPort::InPort));
         self
     }
 

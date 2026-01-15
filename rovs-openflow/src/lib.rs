@@ -28,7 +28,7 @@ mod multipart;
 mod oxm;
 mod vconn;
 
-pub use action::{Action, ActionList, LearnSpec, NxLearn, CT_COMMIT};
+pub use action::{nxm, Action, ActionList, LearnSpec, NxLearn, OutputPort, CT_COMMIT};
 pub use error::{Error, OfError, OfErrorType};
 pub use flow::{Flow, FlowCommand, FlowFlags, FlowStats};
 pub use instruction::{Instruction, InstructionList};

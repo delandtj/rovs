@@ -51,7 +51,7 @@ pub use error::Error;
 pub use topology::{Bridge, Interface, Port};
 
 // Re-export commonly used types from other crates
-pub use rovs_openflow::{ActionList, Flow, Match};
+pub use rovs_openflow::{nxm, ActionList, Flow, LearnSpec, Match, NxLearn};
 pub use rovs_ovsdb::{Transaction, TransactionStatus};
 
 pub type Result<T> = std::result::Result<T, Error>;
