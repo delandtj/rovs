@@ -685,3 +685,135 @@ async fn add_flow_with_arp_proxy_actions() {
         .await
         .expect("Failed to delete flows");
 }
+
+#[tokio::test]
+#[ignore = "requires ovs-vswitchd"]
+async fn ndp_proxy_flow_and_packet_out() {
+    use rovs_openflow::ndp::{build_na_reply, parse_neighbor_solicitation};
+    use rovs_openflow::{PacketOut, OFPP_CONTROLLER};
+    use std::net::Ipv6Addr;
+
+    let addr = get_openflow_addr().expect("OPENFLOW_ADDR not set");
+    let mut conn = VConn::connect(&addr).await.expect("Failed to connect");
+
+    // Install flow: ICMPv6 NS -> CONTROLLER
+    // This is the flow pattern used for NDP proxy
+    let ns_to_controller = Flow::add()
+        .table(5) // Use table 5 to avoid conflicts
+        .priority(500)
+        .match_fields(Match::new().icmpv6_type(135)) // Neighbor Solicitation
+        .actions(ActionList::new().controller(0xffff)); // Full packet
+
+    conn.send_flow_sync(&ns_to_controller)
+        .await
+        .expect("Failed to install NDP flow");
+
+    // Build a test Neighbor Solicitation packet
+    let src_mac = [0x02, 0x00, 0x00, 0x00, 0x01, 0x00u8];
+    let src_ipv6: Ipv6Addr = "fe80::1".parse().unwrap();
+    let target_ipv6: Ipv6Addr = "fd00::100".parse().unwrap();
+    let dst_mac = [0x33, 0x33, 0xff, 0x00, 0x01, 0x00u8];
+    let dst_ipv6: Ipv6Addr = "ff02::1:ff00:100".parse().unwrap();
+
+    let ns_packet = build_test_ns_packet(
+        src_mac, dst_mac, src_ipv6, dst_ipv6, target_ipv6, Some(src_mac),
+    );
+
+    // Verify NS packet parsing works
+    let parsed = parse_neighbor_solicitation(&ns_packet);
+    assert!(parsed.is_some(), "Should parse test NS packet");
+
+    let (eth, ipv6, ns) = parsed.unwrap();
+    assert_eq!(eth.src_mac, src_mac);
+    assert_eq!(ipv6.src_addr, src_ipv6);
+    assert_eq!(ns.target_addr, target_ipv6);
+    assert_eq!(ns.source_ll_addr, Some(src_mac));
+
+    // Build NA reply
+    let our_mac = [0x02, 0x00, 0x00, 0x00, 0x99, 0x00u8];
+    let na_packet = build_na_reply(&eth, &ipv6, &ns, our_mac, target_ipv6);
+
+    // Verify NA packet size (14 eth + 40 ipv6 + 32 icmpv6 = 86)
+    assert_eq!(na_packet.len(), 86, "NA packet should be 86 bytes");
+
+    // Verify NA packet starts with correct Ethernet header
+    assert_eq!(&na_packet[0..6], &src_mac); // dst = original src
+    assert_eq!(&na_packet[6..12], &our_mac); // src = our MAC
+    assert_eq!(&na_packet[12..14], &[0x86, 0xdd]); // IPv6
+
+    // Verify ICMPv6 type is Neighbor Advertisement (136)
+    let icmpv6_offset = 14 + 40; // eth + ipv6
+    assert_eq!(na_packet[icmpv6_offset], 136, "Should be NA type");
+
+    // Send NA via PacketOut (verifies PacketOut encoding works)
+    let na_out = PacketOut::new()
+        .in_port(OFPP_CONTROLLER)
+        .actions(ActionList::new().output(1)) // Output to port 1
+        .data(na_packet);
+
+    conn.send_packet_out(&na_out)
+        .await
+        .expect("Failed to send NA PacketOut");
+
+    // Clean up
+    let delete_flows = Flow::delete().table(5);
+    conn.send_flow_sync(&delete_flows)
+        .await
+        .expect("Failed to delete flows");
+}
+
+/// Build a test Neighbor Solicitation packet.
+fn build_test_ns_packet(
+    src_mac: [u8; 6],
+    dst_mac: [u8; 6],
+    src_ipv6: std::net::Ipv6Addr,
+    dst_ipv6: std::net::Ipv6Addr,
+    target_ipv6: std::net::Ipv6Addr,
+    source_ll_addr: Option<[u8; 6]>,
+) -> Vec<u8> {
+    use rovs_openflow::ndp::{icmpv6_checksum, ICMPV6_NEIGHBOR_SOLICITATION, NDP_OPT_SOURCE_LL_ADDR};
+
+    let mut packet = Vec::with_capacity(86);
+
+    // Ethernet header
+    packet.extend_from_slice(&dst_mac);
+    packet.extend_from_slice(&src_mac);
+    packet.extend_from_slice(&0x86ddu16.to_be_bytes()); // IPv6
+
+    // Build ICMPv6 NS first to get length for IPv6 header
+    let mut icmpv6 = Vec::new();
+    icmpv6.push(ICMPV6_NEIGHBOR_SOLICITATION); // Type
+    icmpv6.push(0); // Code
+    icmpv6.push(0); // Checksum placeholder
+    icmpv6.push(0);
+    icmpv6.extend_from_slice(&[0u8; 4]); // Reserved
+    icmpv6.extend_from_slice(&target_ipv6.octets()); // Target
+
+    // Source link-layer address option
+    if let Some(mac) = source_ll_addr {
+        icmpv6.push(NDP_OPT_SOURCE_LL_ADDR);
+        icmpv6.push(1); // Length in 8-byte units
+        icmpv6.extend_from_slice(&mac);
+    }
+
+    // Calculate checksum
+    let checksum = icmpv6_checksum(&src_ipv6, &dst_ipv6, &icmpv6);
+    icmpv6[2] = (checksum >> 8) as u8;
+    icmpv6[3] = checksum as u8;
+
+    // IPv6 header
+    packet.push(0x60); // Version 6, TC high nibble = 0
+    packet.push(0x00); // TC low nibble + flow label high
+    packet.push(0x00); // Flow label
+    packet.push(0x00); // Flow label low
+    packet.extend_from_slice(&(icmpv6.len() as u16).to_be_bytes()); // Payload length
+    packet.push(58); // Next header = ICMPv6
+    packet.push(255); // Hop limit
+    packet.extend_from_slice(&src_ipv6.octets());
+    packet.extend_from_slice(&dst_ipv6.octets());
+
+    // ICMPv6 payload
+    packet.extend_from_slice(&icmpv6);
+
+    packet
+}
