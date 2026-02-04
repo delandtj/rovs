@@ -38,6 +38,11 @@ Located in `rovs-client/examples/`:
 | `ovsdb_monitor` | Real-time database monitoring |
 | `list_bridges` | High-level client API usage |
 | `add_flow` | OpenFlow flow programming |
+| `dual_bridge_vlan` | VLAN routing between two bridges |
+| `mac_learning` | MAC learning with NxLearn action |
+| `mac_translation` | MAC NAT with Nicira extensions |
+| `vlan_mac_nat` | VLAN bridge with MAC NAT for IPv4/IPv6 |
+| `ndp_controller` | OpenFlow controller for NDP proxy |
 
 ## CI Pipeline
 
@@ -59,7 +64,7 @@ rovs-ovsdb      → OVSDB client, IDL, transactions
 rovs-client     → High-level API and examples
 
 rovs-types      → Shared types (Atom, MacAddr)
-rovs-openflow   → OpenFlow 1.3 (in progress, OXM fields defined)
+rovs-openflow   → OpenFlow 1.3 + Nicira extensions (VConn, flows, controller)
 ```
 
 ## Key Design Patterns
@@ -77,6 +82,44 @@ rovs-openflow   → OpenFlow 1.3 (in progress, OXM fields defined)
 
 ### JSON-RPC Parsing
 The connection uses brace-depth tracking (not newlines) to parse JSON - OVSDB servers don't send newlines after responses.
+
+### OpenFlow Controller Development
+Use `VConn` for OpenFlow switch connections:
+```rust
+let mut conn = VConn::connect(&addr).await?;
+
+// Install flows
+let flow = Flow::add()
+    .table(0).priority(100)
+    .match_fields(Match::new().icmpv6_type(135))
+    .actions(ActionList::new().controller(0xffff));
+conn.send_flow_sync(&flow).await?;
+
+// Receive packets from switch
+let packet_in = conn.recv_packet_in().await?;
+
+// Send packets to switch
+let packet_out = PacketOut::new()
+    .in_port(in_port)
+    .actions(ActionList::new().output(1))
+    .data(packet_data);
+conn.send_packet_out(&packet_out).await?;
+```
+
+### Nicira Extensions
+OVS-specific actions beyond standard OpenFlow:
+- `NxRegLoad` - Load immediate value into register/field
+- `NxMove` - Copy bits between fields
+- `NxLearn` - Dynamic flow learning
+- `resubmit(port, table)` - Resubmit packet to another table
+
+Example MAC NAT with Nicira:
+```rust
+ActionList::new()
+    .nx_reg_load(OxmHeader::EthSrc, mac_bytes)  // Set source MAC
+    .nx_move(OxmHeader::EthDst, OxmHeader::EthSrc, 48)  // Copy dst->src
+    .output(1)
+```
 
 ## Testing with Container (Recommended)
 
@@ -156,3 +199,11 @@ Set `OVSDB_ADDR=unix:/tmp/ovs-test/db.sock` for examples.
 - Set encoding: empty = `["set", []]`, single = raw value, multiple = `["set", [v1, v2]]`
 - UUID ref: `["uuid", "..."]`, named-uuid: `["named-uuid", "row0"]`
 - Monitor versions: V1 (original), V2 (monitor_cond), V3 (monitor_cond_since)
+
+## OpenFlow Protocol Notes
+
+- Default OpenFlow port: 6653 (IANA assigned), legacy: 6633
+- Controller configuration via OVSDB: `txn.set_controller("bridge", "tcp:127.0.0.1:6653")`
+- OXM (OpenFlow Extensible Match) field format: class(2) + field(7) + hasmask(1) + length(1) + value
+- Packet-In reasons: NoMatch (table miss), Action (output to controller), InvalidTtl
+- Linux interface names limited to 15 characters (IFNAMSIZ - 1)
