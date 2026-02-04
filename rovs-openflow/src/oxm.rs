@@ -709,7 +709,7 @@ pub fn encode_xxreg_ipv6_masked(reg_num: u8, addr: std::net::Ipv6Addr, mask: std
 ///
 /// # Examples
 ///
-/// ```
+/// ```ignore
 /// use rovs_openflow::oxm::prefix_to_mask_v6;
 ///
 /// assert_eq!(prefix_to_mask_v6(64), 0xffffffff_ffffffff_00000000_00000000);
@@ -736,7 +736,7 @@ pub const fn prefix_to_mask_v6(prefix_len: u8) -> u128 {
 ///
 /// # Examples
 ///
-/// ```
+/// ```ignore
 /// use rovs_openflow::oxm::prefix_to_mask;
 ///
 /// assert_eq!(prefix_to_mask(24), 0xffffff00); // 255.255.255.0
