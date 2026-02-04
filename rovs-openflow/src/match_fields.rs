@@ -90,11 +90,17 @@ pub struct Match {
     /// UDP destination port
     pub udp_dst: Option<u16>,
 
-    // L4 ICMP
-    /// ICMP type
+    // L4 ICMPv4
+    /// ICMPv4 type
     pub icmp_type: Option<u8>,
-    /// ICMP code
+    /// ICMPv4 code
     pub icmp_code: Option<u8>,
+
+    // L4 ICMPv6
+    /// ICMPv6 type
+    pub icmpv6_type: Option<u8>,
+    /// ICMPv6 code
+    pub icmpv6_code: Option<u8>,
 
     // ARP
     /// ARP opcode
@@ -242,6 +248,44 @@ impl Match {
         self
     }
 
+    /// Match on ICMPv4 type.
+    ///
+    /// Common values: 0 = echo reply, 8 = echo request
+    pub fn icmp_type(mut self, icmp_type: u8) -> Self {
+        self.eth_type = Some(0x0800); // IPv4
+        self.ip_proto = Some(1); // ICMP
+        self.icmp_type = Some(icmp_type);
+        self
+    }
+
+    /// Match on ICMPv4 code.
+    pub fn icmp_code(mut self, code: u8) -> Self {
+        self.eth_type = Some(0x0800); // IPv4
+        self.ip_proto = Some(1); // ICMP
+        self.icmp_code = Some(code);
+        self
+    }
+
+    /// Match on ICMPv6 type.
+    ///
+    /// Common values: 128 = echo request, 129 = echo reply,
+    /// 133 = router solicitation, 134 = router advertisement,
+    /// 135 = neighbor solicitation, 136 = neighbor advertisement
+    pub fn icmpv6_type(mut self, icmp_type: u8) -> Self {
+        self.eth_type = Some(0x86dd); // IPv6
+        self.ip_proto = Some(58); // ICMPv6
+        self.icmpv6_type = Some(icmp_type);
+        self
+    }
+
+    /// Match on ICMPv6 code.
+    pub fn icmpv6_code(mut self, code: u8) -> Self {
+        self.eth_type = Some(0x86dd); // IPv6
+        self.ip_proto = Some(58); // ICMPv6
+        self.icmpv6_code = Some(code);
+        self
+    }
+
     /// Check if this match is empty (matches all).
     pub fn is_empty(&self) -> bool {
         self.in_port.is_none()
@@ -256,6 +300,10 @@ impl Match {
             && self.tcp_dst.is_none()
             && self.udp_src.is_none()
             && self.udp_dst.is_none()
+            && self.icmp_type.is_none()
+            && self.icmp_code.is_none()
+            && self.icmpv6_type.is_none()
+            && self.icmpv6_code.is_none()
             && self.tunnel_id.is_none()
             && self.arp_op.is_none()
             && self.arp_spa.is_none()
@@ -472,6 +520,16 @@ impl Match {
             f if f == OxmField::Icmpv4Code as u8 => {
                 if value_len >= 1 {
                     m.icmp_code = Some(value[0]);
+                }
+            }
+            f if f == OxmField::Icmpv6Type as u8 => {
+                if value_len >= 1 {
+                    m.icmpv6_type = Some(value[0]);
+                }
+            }
+            f if f == OxmField::Icmpv6Code as u8 => {
+                if value_len >= 1 {
+                    m.icmpv6_code = Some(value[0]);
                 }
             }
             f if f == OxmField::ArpOp as u8 => {
@@ -784,7 +842,7 @@ impl Match {
             ));
         }
 
-        // ICMP fields
+        // ICMPv4 fields
         if let Some(icmp_type) = self.icmp_type {
             oxm_fields.extend(oxm::encode_u8(
                 OxmClass::OpenflowBasic,
@@ -797,6 +855,22 @@ impl Match {
                 OxmClass::OpenflowBasic,
                 OxmField::Icmpv4Code as u8,
                 icmp_code,
+            ));
+        }
+
+        // ICMPv6 fields
+        if let Some(icmpv6_type) = self.icmpv6_type {
+            oxm_fields.extend(oxm::encode_u8(
+                OxmClass::OpenflowBasic,
+                OxmField::Icmpv6Type as u8,
+                icmpv6_type,
+            ));
+        }
+        if let Some(icmpv6_code) = self.icmpv6_code {
+            oxm_fields.extend(oxm::encode_u8(
+                OxmClass::OpenflowBasic,
+                OxmField::Icmpv6Code as u8,
+                icmpv6_code,
             ));
         }
 
