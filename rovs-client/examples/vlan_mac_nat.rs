@@ -35,6 +35,7 @@ const PHYSICAL_PORT: &str = "eno1";
 const INTERNAL_PORT: &str = "intern";
 const VLAN_PORT: &str = "vlan100";
 const VLAN_TAG: u16 = 100;
+const OPENFLOW_PORT: u16 = 6654; // Use unique port to avoid conflicts with other bridges
 
 // MAC addresses for NAT
 const INTERNAL_MAC: [u8; 6] = [0x02, 0x00, 0x00, 0x00, 0x01, 0x00]; // Internal (vlan100 side)
@@ -58,7 +59,7 @@ fn get_ovsdb_addr() -> String {
 
 fn get_openflow_addr() -> Address {
     std::env::var("OPENFLOW_ADDR")
-        .unwrap_or_else(|_| "tcp:127.0.0.1:6653".to_string())
+        .unwrap_or_else(|_| format!("tcp:127.0.0.1:{}", OPENFLOW_PORT))
         .parse()
         .expect("Invalid OPENFLOW_ADDR")
 }
@@ -172,17 +173,28 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // =========================================================================
     println!("\n=== Configuring OpenFlow controller ===\n");
 
-    // Set the bridge to listen for OpenFlow connections
-    // This is typically done via ovs-vsctl, but we can do it via OVSDB too
+    // Set the bridge to listen for OpenFlow connections via OVSDB
+    let controller_target = format!("ptcp:{}:127.0.0.1", OPENFLOW_PORT);
+    println!("Setting controller to {}...", controller_target);
+
+    let mut ctrl_txn = Transaction::new("Open_vSwitch");
+    ctrl_txn.set_controller(BRIDGE_NAME, &controller_target);
+
+    match client.commit(&mut ctrl_txn).await {
+        Ok(true) => println!("Controller configured successfully!"),
+        Ok(false) => {
+            eprintln!("Warning: Failed to set controller (may already exist)");
+        }
+        Err(e) => {
+            eprintln!("Warning: Controller configuration error: {}", e);
+        }
+    }
+    client.wait().await?;
+
+    // Give OVS a moment to start the OpenFlow listener
+    tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+
     let of_addr = get_openflow_addr();
-    println!(
-        "Note: Ensure bridge is configured to accept OpenFlow connections."
-    );
-    println!("You may need to run:");
-    println!(
-        "  ovs-vsctl set-controller {} ptcp:6653:127.0.0.1\n",
-        BRIDGE_NAME
-    );
 
     // =========================================================================
     // Part 3: Install OpenFlow rules for MAC NAT

@@ -855,6 +855,59 @@ impl Transaction {
         // Delete port - may fail if still in bridge's ports set
         self.delete_by_name("Port", port_name);
     }
+
+    /// Set the OpenFlow controller for a bridge.
+    ///
+    /// Creates a Controller row with the specified target and sets it on the
+    /// bridge. This enables OpenFlow management of the bridge.
+    ///
+    /// # Arguments
+    ///
+    /// * `bridge_name` - Name of the bridge to configure
+    /// * `target` - Controller target (e.g., "ptcp:6653:127.0.0.1" for passive TCP,
+    ///              "tcp:127.0.0.1:6653" for active connection to a controller)
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // Set bridge to listen for OpenFlow connections on port 6653
+    /// txn.set_controller("br0", "ptcp:6653:127.0.0.1");
+    ///
+    /// // Connect bridge to a remote controller
+    /// txn.set_controller("br0", "tcp:192.168.1.1:6653");
+    /// ```
+    pub fn set_controller(&mut self, bridge_name: &str, target: &str) -> RowRef {
+        // Create controller row
+        let controller_ref = self.insert(
+            "Controller",
+            json!({
+                "target": target
+            }),
+        );
+
+        // Set controller on bridge (replaces any existing controller)
+        self.update_by_name(
+            "Bridge",
+            bridge_name,
+            json!({
+                "controller": controller_ref.to_json()
+            }),
+        );
+
+        controller_ref
+    }
+
+    /// Update columns in a row identified by name.
+    ///
+    /// Convenience wrapper for updating rows using their name column.
+    pub fn update_by_name(&mut self, table: &str, name: &str, columns: Value) {
+        self.operations.push(json!({
+            "op": "update",
+            "table": table,
+            "where": [["name", "==", name]],
+            "row": columns
+        }));
+    }
 }
 
 #[cfg(test)]
