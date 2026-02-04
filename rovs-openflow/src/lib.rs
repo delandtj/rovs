@@ -25,7 +25,10 @@ mod instruction;
 mod match_fields;
 mod message;
 mod multipart;
+pub mod ndp;
 mod oxm;
+mod packet_in;
+mod packet_out;
 mod vconn;
 
 pub use action::{nxm, Action, ActionList, LearnSpec, NxLearn, OutputPort, CT_COMMIT};
@@ -35,6 +38,8 @@ pub use instruction::{Instruction, InstructionList};
 pub use match_fields::Match;
 pub use message::{Header, Message, MessageType};
 pub use multipart::{FlowStatsEntry, FlowStatsRequest, MultipartType};
+pub use packet_in::{PacketIn, PacketInReason, OFP_NO_BUFFER};
+pub use packet_out::{PacketOut, OFPP_CONTROLLER, OFPP_ANY};
 pub use vconn::VConn;
 
 pub type Result<T> = std::result::Result<T, Error>;

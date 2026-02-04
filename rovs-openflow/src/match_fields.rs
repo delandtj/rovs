@@ -312,6 +312,50 @@ impl Match {
             && self.arp_tha.is_none()
     }
 
+    /// Decode OXM fields from raw bytes (without match header).
+    ///
+    /// This is useful for parsing match fields from Packet-In messages
+    /// where the match header has already been processed.
+    pub fn decode_oxm(oxm_data: &[u8]) -> crate::Result<Self> {
+        let mut m = Match::new();
+        let mut offset = 0;
+
+        while offset + 4 <= oxm_data.len() {
+            let header = u32::from_be_bytes([
+                oxm_data[offset],
+                oxm_data[offset + 1],
+                oxm_data[offset + 2],
+                oxm_data[offset + 3],
+            ]);
+
+            let oxm_class = (header >> 16) as u16;
+            let field = ((header >> 9) & 0x7f) as u8;
+            let has_mask = ((header >> 8) & 1) != 0;
+            let length = (header & 0xff) as usize;
+
+            offset += 4; // Skip header
+
+            if offset + length > oxm_data.len() {
+                break; // Not enough data
+            }
+
+            let value = &oxm_data[offset..offset + length];
+            let value_len = if has_mask { length / 2 } else { length };
+
+            // Decode based on class and field
+            if oxm_class == OxmClass::OpenflowBasic as u16 {
+                Self::decode_oxm_field(&mut m, field, has_mask, value, value_len);
+            } else if oxm_class == OxmClass::Nxm1 as u16 {
+                Self::decode_nxm_field(&mut m, field, has_mask, value, value_len);
+            }
+            // Skip unknown classes
+
+            offset += length;
+        }
+
+        Ok(m)
+    }
+
     /// Decode a match from OpenFlow wire format.
     ///
     /// Returns the decoded match and the total number of bytes consumed

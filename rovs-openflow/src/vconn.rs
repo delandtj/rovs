@@ -7,6 +7,8 @@ use rovs_transport::{Address, Stream};
 
 use crate::error::OfError;
 use crate::multipart::{parse_flow_stats_reply, FlowStatsEntry, FlowStatsRequest};
+use crate::packet_in::PacketIn;
+use crate::packet_out::PacketOut;
 use crate::{Error, Flow, Header, Message, MessageType, Result, Version};
 
 /// An OpenFlow virtual connection.
@@ -264,5 +266,82 @@ impl VConn {
         }
 
         Ok(all_entries)
+    }
+
+    /// Wait for and receive a Packet-In message.
+    ///
+    /// This blocks until a Packet-In message is received, handling
+    /// echo requests and skipping other message types.
+    pub async fn recv_packet_in(&mut self) -> Result<PacketIn> {
+        loop {
+            let msg = self.recv_message().await?;
+
+            // Check for errors
+            Self::check_error(&msg)?;
+
+            // Handle echo requests (keep-alive)
+            if msg.header.msg_type == MessageType::EchoRequest {
+                let echo_reply = Message::new(
+                    self.version,
+                    MessageType::EchoReply,
+                    msg.header.xid,
+                    msg.body.clone(),
+                );
+                self.send_message(&echo_reply).await?;
+                continue;
+            }
+
+            // Process Packet-In
+            if msg.header.msg_type == MessageType::PacketIn {
+                return PacketIn::parse(msg.body);
+            }
+
+            // Skip other async messages (PortStatus, FlowRemoved)
+        }
+    }
+
+    /// Try to receive a Packet-In message without blocking.
+    ///
+    /// Returns `Ok(Some(packet_in))` if a Packet-In is available,
+    /// `Ok(None)` if a different message was received (and handled),
+    /// or an error if something went wrong.
+    ///
+    /// Note: This still blocks on the read itself; it just doesn't loop
+    /// waiting specifically for a Packet-In.
+    pub async fn try_recv_packet_in(&mut self) -> Result<Option<PacketIn>> {
+        let msg = self.recv_message().await?;
+
+        // Check for errors
+        Self::check_error(&msg)?;
+
+        // Handle echo requests
+        if msg.header.msg_type == MessageType::EchoRequest {
+            let echo_reply = Message::new(
+                self.version,
+                MessageType::EchoReply,
+                msg.header.xid,
+                msg.body.clone(),
+            );
+            self.send_message(&echo_reply).await?;
+            return Ok(None);
+        }
+
+        // Process Packet-In
+        if msg.header.msg_type == MessageType::PacketIn {
+            return Ok(Some(PacketIn::parse(msg.body)?));
+        }
+
+        // Other message types
+        Ok(None)
+    }
+
+    /// Send a Packet-Out message.
+    ///
+    /// This injects a packet into the switch's datapath or releases
+    /// a buffered packet with the specified actions.
+    pub async fn send_packet_out(&mut self, packet_out: &PacketOut) -> Result<()> {
+        let xid = self.next_xid();
+        let msg = packet_out.to_message(self.version, xid);
+        self.send_message(&msg).await
     }
 }
