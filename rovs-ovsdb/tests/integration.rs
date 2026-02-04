@@ -19,6 +19,13 @@
 
 use rovs_ovsdb::{Client, Transaction};
 
+/// Generate a short unique name for test resources.
+/// Linux interface names are limited to 15 characters (IFNAMSIZ - 1).
+fn short_id() -> String {
+    // Use first 4 chars of UUID for uniqueness
+    uuid::Uuid::new_v4().to_string()[..4].to_string()
+}
+
 fn get_ovsdb_addr() -> Option<String> {
     std::env::var("OVSDB_ADDR").ok()
 }
@@ -46,8 +53,8 @@ async fn create_and_delete_bridge() {
 
     // Generate unique bridge name to avoid conflicts
     let bridge_name = format!(
-        "test-br-{}",
-        uuid::Uuid::new_v4().to_string().split('-').next().unwrap()
+        "tbr-{}",
+        short_id()
     );
 
     // Create bridge
@@ -115,12 +122,12 @@ async fn add_port_to_bridge() {
     let mut client = Client::connect(&addr).await.expect("Failed to connect");
 
     let bridge_name = format!(
-        "test-br-{}",
-        uuid::Uuid::new_v4().to_string().split('-').next().unwrap()
+        "tbr-{}",
+        short_id()
     );
     let port_name = format!(
-        "test-port-{}",
-        uuid::Uuid::new_v4().to_string().split('-').next().unwrap()
+        "tp-{}",
+        short_id()
     );
 
     // Create bridge
@@ -154,8 +161,8 @@ async fn add_vlan_port() {
     let mut client = Client::connect(&addr).await.expect("Failed to connect");
 
     let bridge_name = format!(
-        "test-br-{}",
-        uuid::Uuid::new_v4().to_string().split('-').next().unwrap()
+        "tbr-{}",
+        short_id()
     );
 
     // Create bridge
@@ -184,12 +191,12 @@ async fn create_patch_ports() {
     let mut client = Client::connect(&addr).await.expect("Failed to connect");
 
     let bridge1 = format!(
-        "test-br1-{}",
-        uuid::Uuid::new_v4().to_string().split('-').next().unwrap()
+        "tb1-{}",
+        short_id()
     );
     let bridge2 = format!(
-        "test-br2-{}",
-        uuid::Uuid::new_v4().to_string().split('-').next().unwrap()
+        "tb2-{}",
+        short_id()
     );
 
     // Create two bridges with patch ports
@@ -225,8 +232,8 @@ async fn transaction_error_on_duplicate_name() {
     let mut client = Client::connect(&addr).await.expect("Failed to connect");
 
     let bridge_name = format!(
-        "test-br-{}",
-        uuid::Uuid::new_v4().to_string().split('-').next().unwrap()
+        "tbr-{}",
+        short_id()
     );
 
     // Create bridge
@@ -287,7 +294,10 @@ async fn cleanup_bridge(client: &mut Client, bridge_name: &str) {
             .filter(|r| {
                 // Check if port name matches bridge or any associated port
                 r.get_string("name").is_some_and(|n| {
-                    n.starts_with("test-")
+                    n.starts_with("tbr-")
+                        || n.starts_with("tb1-")
+                        || n.starts_with("tb2-")
+                        || n.starts_with("tp-")
                         || n == bridge_name
                         || n.starts_with("patch-")
                         || n.starts_with("vlan")
@@ -301,7 +311,10 @@ async fn cleanup_bridge(client: &mut Client, bridge_name: &str) {
             .rows("Interface")
             .filter(|r| {
                 r.get_string("name").is_some_and(|n| {
-                    n.starts_with("test-")
+                    n.starts_with("tbr-")
+                        || n.starts_with("tb1-")
+                        || n.starts_with("tb2-")
+                        || n.starts_with("tp-")
                         || n == bridge_name
                         || n.starts_with("patch-")
                         || n.starts_with("vlan")
