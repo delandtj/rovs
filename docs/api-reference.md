@@ -4,24 +4,22 @@ Complete API documentation for all rovs crates.
 
 ## Table of Contents
 
-- [rovs-transport](#rovs-transport)
-- [rovs-jsonrpc](#rovs-jsonrpc)
-- [rovs-ovsdb](#rovs-ovsdb)
-- [rovs-types](#rovs-types)
-- [rovs-openflow](#rovs-openflow)
+- [rovs-transport](#rovs-transport) - Network transport layer
+- [rovs-jsonrpc](#rovs-jsonrpc) - JSON-RPC 1.0 protocol
+- [rovs-ovsdb](#rovs-ovsdb) - OVSDB client and IDL
+- [rovs-openflow](#rovs-openflow) - OpenFlow 1.3 + Nicira extensions
+- [rovs-ext](#rovs-ext) - High-level abstractions
+- [rovs-types](#rovs-types) - Shared types
 
 ---
 
 ## rovs-transport
 
-Transport layer for Unix sockets, TCP, and TLS connections.
+Network transport layer for Unix sockets, TCP, and TLS connections.
 
 ### Address
 
 ```rust
-// File: rovs-transport/src/address.rs
-
-/// Parsed connection address
 pub enum Address {
     Unix(PathBuf),
     Tcp(SocketAddr),
@@ -29,23 +27,15 @@ pub enum Address {
 }
 
 impl Address {
-    /// Parse an address string
-    /// Formats: "unix:/path", "tcp:host:port", "ssl:host:port"
     pub fn parse(s: &str) -> Result<Self, Error>;
 }
 
-impl FromStr for Address {
-    type Err = Error;
-    fn from_str(s: &str) -> Result<Self, Self::Err>;
-}
+impl FromStr for Address { ... }
 ```
 
 ### Stream
 
 ```rust
-// File: rovs-transport/src/stream.rs
-
-/// Unified stream type for all transports
 pub enum Stream {
     Unix(UnixStream),
     Tcp(TcpStream),
@@ -53,61 +43,8 @@ pub enum Stream {
 }
 
 impl Stream {
-    /// Connect to an address
     pub async fn connect(addr: &Address) -> Result<Self, Error>;
-
-    /// Connect with TLS configuration
     pub async fn connect_tls(addr: &Address, config: TlsConfig) -> Result<Self, Error>;
-}
-
-// Implements AsyncRead + AsyncWrite
-impl AsyncRead for Stream { ... }
-impl AsyncWrite for Stream { ... }
-```
-
-### TlsConfig
-
-```rust
-// File: rovs-transport/src/tls.rs
-
-/// TLS configuration
-pub struct TlsConfig {
-    /// CA certificate for server verification
-    pub ca_cert: Option<PathBuf>,
-    /// Client certificate
-    pub cert: Option<PathBuf>,
-    /// Client private key
-    pub key: Option<PathBuf>,
-    /// Skip server verification (insecure)
-    pub skip_verify: bool,
-}
-
-impl TlsConfig {
-    pub fn new() -> Self;
-    pub fn ca_cert(self, path: impl Into<PathBuf>) -> Self;
-    pub fn client_cert(self, cert: impl Into<PathBuf>, key: impl Into<PathBuf>) -> Self;
-    pub fn skip_verify(self) -> Self;
-}
-```
-
-### Error
-
-```rust
-// File: rovs-transport/src/error.rs
-
-#[derive(Debug, thiserror::Error)]
-pub enum Error {
-    #[error("I/O error: {0}")]
-    Io(#[from] std::io::Error),
-
-    #[error("Invalid address: {0}")]
-    InvalidAddress(String),
-
-    #[error("TLS error: {0}")]
-    Tls(String),
-
-    #[error("Connection refused")]
-    ConnectionRefused,
 }
 ```
 
@@ -120,117 +57,15 @@ JSON-RPC 1.0 implementation for OVSDB protocol.
 ### Connection
 
 ```rust
-// File: rovs-jsonrpc/src/connection.rs
-
-/// JSON-RPC connection over a transport stream
-pub struct Connection {
-    // Internal: split stream, buffers, notification queue
-}
+pub struct Connection { ... }
 
 impl Connection {
-    /// Create a new connection from a stream
     pub fn new(stream: Stream) -> Self;
-
-    /// Get the next request ID
     pub fn next_id(&self) -> u64;
-
-    /// Send a request and wait for response
-    /// Returns the result value or error
     pub async fn transact(&mut self, method: &str, params: Value) -> Result<Value>;
-
-    /// Send a notification (no response expected)
     pub async fn notify(&mut self, method: &str, params: Value) -> Result<()>;
-
-    /// Send a raw message
-    pub async fn send_message(&mut self, msg: &Message) -> Result<()>;
-
-    /// Receive a single message
-    /// Handles OVSDB's non-newline-terminated JSON
     pub async fn recv_message(&mut self) -> Result<Message>;
-
-    /// Check if there are pending notifications
-    pub fn has_pending_notifications(&self) -> bool;
-
-    /// Pop next pending notification
     pub fn pop_notification(&mut self) -> Option<Request>;
-
-    /// Drain all pending notifications
-    pub fn drain_notifications(&mut self) -> impl Iterator<Item = Request> + '_;
-}
-```
-
-### Message Types
-
-```rust
-// File: rovs-jsonrpc/src/message.rs
-
-/// JSON-RPC message (request or response)
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(untagged)]
-pub enum Message {
-    Request(Request),
-    Response(Response),
-}
-
-/// JSON-RPC request
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Request {
-    pub method: String,
-    pub params: Value,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub id: Option<u64>,
-}
-
-impl Request {
-    /// Create a new request with ID
-    pub fn new(method: impl Into<String>, params: Value, id: u64) -> Self;
-
-    /// Create a notification (no ID)
-    pub fn notification(method: impl Into<String>, params: Value) -> Self;
-}
-
-/// JSON-RPC response
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Response {
-    pub id: u64,
-    pub result: Option<Value>,
-    pub error: Option<RpcError>,
-}
-
-/// JSON-RPC error
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RpcError {
-    pub code: i32,
-    pub message: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub data: Option<Value>,
-}
-```
-
-### Error
-
-```rust
-// File: rovs-jsonrpc/src/error.rs
-
-#[derive(Debug, thiserror::Error)]
-pub enum Error {
-    #[error("I/O error: {0}")]
-    Io(#[from] std::io::Error),
-
-    #[error("JSON error: {0}")]
-    Json(#[from] serde_json::Error),
-
-    #[error("RPC error: {0:?}")]
-    Rpc(RpcError),
-
-    #[error("Connection closed")]
-    ConnectionClosed,
-
-    #[error("Unexpected response ID: expected {expected}, got {got}")]
-    UnexpectedId { expected: u64, got: u64 },
-
-    #[error("Transport error: {0}")]
-    Transport(#[from] rovs_transport::Error),
 }
 ```
 
@@ -238,483 +73,539 @@ pub enum Error {
 
 ## rovs-ovsdb
 
-OVSDB client with IDL (In-memory Database Layer) and transaction support.
+OVSDB client with IDL and transaction support.
 
 ### Client
 
 ```rust
-// File: rovs-ovsdb/src/client.rs
-
-/// OVSDB client
-pub struct Client {
-    // Internal: connection, config, idl, monitor_id
-}
+pub struct Client { ... }
 
 impl Client {
-    /// Connect to an OVSDB server with default config (Open_vSwitch database)
     pub async fn connect(addr: &str) -> Result<Self>;
-
-    /// Connect with custom configuration
     pub async fn connect_with_config(addr: &str, config: ClientConfig) -> Result<Self>;
-
-    /// Get the IDL (in-memory database replica)
     pub fn idl(&self) -> &Idl;
-
-    /// Get mutable IDL reference
-    pub fn idl_mut(&mut self) -> &mut Idl;
-
-    /// Get the database schema
     pub fn schema(&self) -> Option<&DbSchema>;
-
-    /// Check if connected and monitoring
-    pub fn is_connected(&self) -> bool;
-
-    /// Run one iteration - process pending notifications
-    /// Returns true if any updates were processed
     pub async fn run(&mut self) -> Result<bool>;
-
-    /// Wait for next update from server (blocking)
     pub async fn wait(&mut self) -> Result<()>;
-
-    /// Execute a raw transaction (JSON operations)
-    pub async fn transact(&mut self, operations: Value) -> Result<Value>;
-
-    /// Commit a Transaction object
-    /// On success, populates transaction's uuid_map
     pub async fn commit(&mut self, txn: &mut Transaction) -> Result<bool>;
-
-    /// Get list of databases on server
-    pub async fn list_dbs(&mut self) -> Result<Vec<String>>;
-
-    /// Cancel monitoring
-    pub async fn cancel_monitor(&mut self) -> Result<()>;
-}
-```
-
-### ClientConfig
-
-```rust
-// File: rovs-ovsdb/src/client.rs
-
-/// Monitor protocol version
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum MonitorVersion {
-    V1,  // Original monitor
-    V2,  // monitor_cond
-    V3,  // monitor_cond_since
-}
-
-/// Client configuration
-#[derive(Debug, Clone)]
-pub struct ClientConfig {
-    /// Database name (default: "Open_vSwitch")
-    pub database: String,
-    /// Tables to monitor (None = all tables)
-    pub tables: Option<Vec<String>>,
-    /// Monitor protocol version
-    pub monitor_version: MonitorVersion,
-    /// Leader-only mode for clustered OVSDB
-    pub leader_only: bool,
-}
-
-impl Default for ClientConfig {
-    fn default() -> Self;  // Open_vSwitch, all tables, V1
-}
-
-impl ClientConfig {
-    pub fn open_vswitch() -> Self;
-    pub fn database(self, name: impl Into<String>) -> Self;
-    pub fn tables(self, tables: Vec<String>) -> Self;
-    pub fn monitor_version(self, version: MonitorVersion) -> Self;
-}
-```
-
-### Idl
-
-```rust
-// File: rovs-ovsdb/src/idl.rs
-
-/// IDL state
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum IdlState {
-    Initial,
-    SchemaLoaded,
-    Monitoring,
-}
-
-/// In-memory database layer
-pub struct Idl {
-    // Internal: schema, tables, state, change_seqno
-}
-
-impl Idl {
-    /// Create a new empty IDL
-    pub fn new() -> Self;
-
-    /// Get the schema
-    pub fn schema(&self) -> Option<&DbSchema>;
-
-    /// Get IDL state
-    pub fn state(&self) -> IdlState;
-
-    /// Get change sequence number (increments on each update)
-    pub fn change_seqno(&self) -> u64;
-
-    /// Iterate over rows in a table
-    pub fn rows(&self, table: &str) -> impl Iterator<Item = &Row>;
-
-    /// Get a specific row by UUID
-    pub fn get_row(&self, table: &str, uuid: &Uuid) -> Option<&Row>;
-
-    /// Find rows matching a predicate
-    pub fn find_rows<F>(&self, table: &str, predicate: F) -> Vec<&Row>
-    where
-        F: Fn(&Row) -> bool;
-
-    /// Find first row matching predicate
-    pub fn find_row<F>(&self, table: &str, predicate: F) -> Option<&Row>
-    where
-        F: Fn(&Row) -> bool;
-
-    // Internal methods
-    pub(crate) fn set_schema(&mut self, schema: DbSchema);
-    pub(crate) fn set_monitoring(&mut self);
-    pub(crate) fn process_update(&mut self, update: &Value);
-}
-```
-
-### Row
-
-```rust
-// File: rovs-ovsdb/src/row.rs
-
-/// A row in an OVSDB table
-pub struct Row {
-    // Internal: uuid, columns HashMap
-}
-
-impl Row {
-    /// Get the row's UUID
-    pub fn uuid(&self) -> Uuid;
-
-    /// Get a column value
-    pub fn get(&self, column: &str) -> Option<&Atom>;
-
-    /// Get column as string
-    pub fn get_string(&self, column: &str) -> Option<&str>;
-
-    /// Get column as i64
-    pub fn get_i64(&self, column: &str) -> Option<i64>;
-
-    /// Get column as f64
-    pub fn get_f64(&self, column: &str) -> Option<f64>;
-
-    /// Get column as bool
-    pub fn get_bool(&self, column: &str) -> Option<bool>;
-
-    /// Get column as UUID
-    pub fn get_uuid(&self, column: &str) -> Option<Uuid>;
-
-    /// Get column as set (returns Vec for any column)
-    pub fn get_set(&self, column: &str) -> Vec<Atom>;
-
-    /// Get column as map
-    pub fn get_map(&self, column: &str) -> Vec<(Atom, Atom)>;
-
-    /// Get all column names
-    pub fn columns(&self) -> impl Iterator<Item = &str>;
-}
-
-/// OVSDB atomic value
-#[derive(Debug, Clone)]
-pub enum Atom {
-    String(String),
-    Integer(i64),
-    Real(f64),
-    Boolean(bool),
-    Uuid(Uuid),
-}
-
-impl Atom {
-    pub fn as_str(&self) -> Option<&str>;
-    pub fn as_i64(&self) -> Option<i64>;
-    pub fn as_f64(&self) -> Option<f64>;
-    pub fn as_bool(&self) -> Option<bool>;
-    pub fn as_uuid(&self) -> Option<Uuid>;
 }
 ```
 
 ### Transaction
 
 ```rust
-// File: rovs-ovsdb/src/transaction.rs
-
-/// Transaction status
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum TransactionStatus {
-    Uncommitted,
-    Unchanged,
-    Incomplete,
-    Aborted,
-    Success,
-    TryAgain,
-    NotLocked,
-    Error,
-}
-
-/// Reference to a row (existing UUID or named-uuid for inserts)
-#[derive(Debug, Clone)]
-pub enum RowRef {
-    Uuid(Uuid),
-    Named(String),
-}
-
-impl RowRef {
-    /// Convert to JSON for OVSDB protocol
-    /// Uuid -> ["uuid", "..."]
-    /// Named -> ["named-uuid", "..."]
-    pub fn to_json(&self) -> Value;
-}
-
-impl From<Uuid> for RowRef { ... }
-impl From<&str> for RowRef { ... }
-impl From<String> for RowRef { ... }
-
-/// OVSDB transaction builder
-pub struct Transaction {
-    // Internal: db_name, operations, status, uuid_map, uuid_counter
-}
+pub struct Transaction { ... }
 
 impl Transaction {
-    /// Create a new transaction for a database
     pub fn new(db_name: impl Into<String>) -> Self;
 
-    /// Get transaction status
-    pub fn status(&self) -> TransactionStatus;
-
-    /// Get database name
-    pub fn db_name(&self) -> &str;
-
-    // === Basic Operations ===
-
-    /// Insert a row, returns RowRef for use in subsequent operations
+    // Basic operations
     pub fn insert(&mut self, table: &str, row: Value) -> RowRef;
-
-    /// Insert with HashMap
-    pub fn insert_raw(&mut self, table: &str, row: HashMap<String, Value>) -> RowRef;
-
-    /// Update a row by UUID
     pub fn update(&mut self, table: &str, uuid: Uuid, columns: Value);
-
-    /// Mutate a row (add/remove from sets or maps) by UUID
-    pub fn mutate(&mut self, table: &str, uuid: Uuid, mutations: Vec<Value>);
-
-    /// Mutate rows matching name == value
-    pub fn mutate_by_name(&mut self, table: &str, name: &str, mutations: Vec<Value>);
-
-    /// Mutate rows matching custom condition
-    pub fn mutate_where(&mut self, table: &str, condition: Value, mutations: Vec<Value>);
-
-    /// Delete row by UUID
     pub fn delete(&mut self, table: &str, uuid: Uuid);
 
-    /// Delete rows matching name == value
-    pub fn delete_by_name(&mut self, table: &str, name: &str);
-
-    /// Delete rows matching condition
-    pub fn delete_where(&mut self, table: &str, condition: Value);
-
-    /// Add wait operation
-    pub fn wait(
-        &mut self,
-        table: &str,
-        columns: Vec<String>,
-        condition: Value,
-        expected: Value,
-    );
-
-    /// Add comment to transaction
-    pub fn comment(&mut self, comment: impl Into<String>);
-
-    // === High-Level Topology Operations ===
-
-    /// Create bridge with default internal port
-    /// Returns (bridge_ref, port_ref, iface_ref)
+    // High-level topology
     pub fn create_bridge(&mut self, name: &str) -> (RowRef, RowRef, RowRef);
+    pub fn add_port(&mut self, bridge: &str, port: &str, iface_type: &str) -> (RowRef, RowRef);
+    pub fn add_internal_port(&mut self, bridge: &str, port: &str) -> (RowRef, RowRef);
+    pub fn add_vlan_port(&mut self, bridge: &str, port: &str, vlan: u16) -> (RowRef, RowRef);
+    pub fn add_patch_ports(&mut self, br1: &str, br2: &str, ...) -> (RowRef, RowRef, RowRef, RowRef);
+    pub fn set_controller(&mut self, bridge: &str, target: &str);
 
-    /// Add port to existing bridge
-    /// Returns (port_ref, iface_ref)
-    pub fn add_port(
-        &mut self,
-        bridge_name: &str,
-        port_name: &str,
-        iface_type: &str,
-    ) -> (RowRef, RowRef);
-
-    /// Add internal port to bridge
-    pub fn add_internal_port(
-        &mut self,
-        bridge_name: &str,
-        port_name: &str,
-    ) -> (RowRef, RowRef);
-
-    /// Add VLAN port (internal type with tag)
-    pub fn add_vlan_port(
-        &mut self,
-        bridge_name: &str,
-        port_name: &str,
-        vlan_id: u16,
-    ) -> (RowRef, RowRef);
-
-    /// Create patch port pair between two bridges
-    /// Returns (port1_ref, iface1_ref, port2_ref, iface2_ref)
-    pub fn add_patch_ports(
-        &mut self,
-        bridge1: &str,
-        bridge2: &str,
-        port1_name: Option<&str>,
-        port2_name: Option<&str>,
-    ) -> (RowRef, RowRef, RowRef, RowRef);
-
-    /// Delete bridge by UUID (recommended)
-    pub fn delete_bridge_uuid(
-        &mut self,
-        bridge_uuid: Uuid,
-        port_uuids: &[Uuid],
-        iface_uuids: &[Uuid],
-    );
-
-    /// Delete bridge by name (may fail due to references)
-    pub fn delete_bridge(&mut self, name: &str);
-
-    /// Delete port by UUID (recommended)
-    pub fn delete_port_uuid(
-        &mut self,
-        bridge_uuid: Uuid,
-        port_uuid: Uuid,
-        iface_uuid: Uuid,
-    );
-
-    /// Delete port by name (may fail due to references)
-    pub fn delete_port(&mut self, bridge_name: &str, port_name: &str);
-
-    // === Transaction State ===
-
-    /// Build transaction parameters for RPC
-    pub fn build(&self) -> Value;
-
-    /// Get operations (for debugging)
-    pub fn operations(&self) -> &[Value];
-
-    /// Check if transaction has operations
-    pub fn is_empty(&self) -> bool;
-
-    /// Get UUID map after commit
+    // Results
     pub fn uuid_map(&self) -> &HashMap<String, Uuid>;
-
-    /// Look up actual UUID for named-uuid after commit
     pub fn get_uuid(&self, name: &str) -> Option<Uuid>;
-
-    /// Process transaction result (called by Client::commit)
-    pub fn process_result(&mut self, result: &Value) -> bool;
-
-    // Status setters
-    pub fn set_success(&mut self);
-    pub fn set_error(&mut self);
-    pub fn set_try_again(&mut self);
-    pub fn abort(&mut self);
 }
 ```
 
-### Schema
+### Idl
 
 ```rust
-// File: rovs-ovsdb/src/schema.rs
+pub struct Idl { ... }
 
-/// Database schema
-#[derive(Debug, Clone)]
-pub struct DbSchema {
-    pub name: String,
-    pub version: String,
-    pub tables: HashMap<String, TableSchema>,
-}
-
-impl DbSchema {
-    /// Parse schema from JSON
-    pub fn from_json(value: &Value) -> Result<Self>;
-}
-
-/// Table schema
-#[derive(Debug, Clone)]
-pub struct TableSchema {
-    pub name: String,
-    pub columns: HashMap<String, ColumnSchema>,
-    pub max_rows: Option<u64>,
-    pub is_root: bool,
-    pub indexes: Vec<Vec<String>>,
-}
-
-/// Column schema
-#[derive(Debug, Clone)]
-pub struct ColumnSchema {
-    pub name: String,
-    pub type_info: ColumnType,
-    pub mutable: bool,
-    pub ephemeral: bool,
-}
-
-/// Column type information
-#[derive(Debug, Clone)]
-pub struct ColumnType {
-    pub key: BaseType,
-    pub value: Option<BaseType>,
-    pub min: u64,
-    pub max: MaxValue,
-}
-
-#[derive(Debug, Clone)]
-pub enum MaxValue {
-    Exactly(u64),
-    Unlimited,
-}
-
-#[derive(Debug, Clone)]
-pub enum BaseType {
-    Integer { min: Option<i64>, max: Option<i64> },
-    Real { min: Option<f64>, max: Option<f64> },
-    Boolean,
-    String { min_length: Option<u64>, max_length: Option<u64> },
-    Uuid { ref_table: Option<String>, ref_type: RefType },
-}
-
-#[derive(Debug, Clone, Copy)]
-pub enum RefType {
-    Strong,
-    Weak,
+impl Idl {
+    pub fn rows(&self, table: &str) -> impl Iterator<Item = &Row>;
+    pub fn get_row(&self, table: &str, uuid: &Uuid) -> Option<&Row>;
+    pub fn find_row<F>(&self, table: &str, predicate: F) -> Option<&Row>;
+    pub fn change_seqno(&self) -> u64;
 }
 ```
 
-### Error
+### Row
 
 ```rust
-// File: rovs-ovsdb/src/error.rs
+pub struct Row { ... }
 
-#[derive(Debug, thiserror::Error)]
-pub enum Error {
-    #[error("Transport error: {0}")]
-    Transport(#[from] rovs_transport::Error),
+impl Row {
+    pub fn uuid(&self) -> Uuid;
+    pub fn get(&self, column: &str) -> Option<&Atom>;
+    pub fn get_string(&self, column: &str) -> Option<&str>;
+    pub fn get_i64(&self, column: &str) -> Option<i64>;
+    pub fn get_uuid(&self, column: &str) -> Option<Uuid>;
+    pub fn get_set(&self, column: &str) -> Vec<Atom>;
+    pub fn get_map(&self, column: &str) -> Vec<(Atom, Atom)>;
+}
+```
 
-    #[error("JSON-RPC error: {0}")]
-    JsonRpc(#[from] rovs_jsonrpc::Error),
+---
 
-    #[error("Schema error: {0}")]
-    Schema(String),
+## rovs-openflow
 
-    #[error("Transaction error: {0}")]
-    Transaction(String),
+OpenFlow 1.3 protocol with Nicira extensions.
 
-    #[error("Not connected")]
-    NotConnected,
+### VConn (Virtual Connection)
+
+```rust
+pub struct VConn { ... }
+
+impl VConn {
+    pub async fn connect(addr: &Address) -> Result<Self>;
+    pub fn version(&self) -> OfVersion;
+
+    // Flow operations
+    pub async fn send_flow(&mut self, flow: &Flow) -> Result<()>;
+    pub async fn send_flow_sync(&mut self, flow: &Flow) -> Result<()>;
+    pub async fn dump_flows(&mut self) -> Result<Vec<FlowStats>>;
+
+    // Packet operations
+    pub async fn recv_packet_in(&mut self) -> Result<PacketIn>;
+    pub async fn send_packet_out(&mut self, packet: &PacketOut) -> Result<()>;
+}
+```
+
+### Flow Builder
+
+```rust
+pub struct Flow { ... }
+
+impl Flow {
+    pub fn add() -> Self;
+    pub fn modify() -> Self;
+    pub fn modify_strict() -> Self;
+    pub fn delete() -> Self;
+
+    pub fn table(self, id: u8) -> Self;
+    pub fn priority(self, priority: u16) -> Self;
+    pub fn cookie(self, cookie: u64) -> Self;
+    pub fn idle_timeout(self, secs: u16) -> Self;
+    pub fn hard_timeout(self, secs: u16) -> Self;
+    pub fn match_fields(self, m: Match) -> Self;
+    pub fn actions(self, actions: ActionList) -> Self;
+}
+```
+
+### Match Builder
+
+```rust
+pub struct Match { ... }
+
+impl Match {
+    pub fn new() -> Self;
+
+    // Layer 2
+    pub fn in_port(self, port: u32) -> Self;
+    pub fn eth_type(self, ethertype: u16) -> Self;
+    pub fn eth_src(self, mac: [u8; 6]) -> Self;
+    pub fn eth_dst(self, mac: [u8; 6]) -> Self;
+    pub fn vlan_vid(self, vid: u16) -> Self;
+
+    // Layer 3 - IPv4
+    pub fn ipv4_src(self, addr: Ipv4Addr) -> Self;
+    pub fn ipv4_src_masked(self, addr: Ipv4Addr, mask: Ipv4Addr) -> Self;
+    pub fn ipv4_dst(self, addr: Ipv4Addr) -> Self;
+    pub fn ip_proto(self, proto: u8) -> Self;
+
+    // Layer 3 - IPv6
+    pub fn ipv6_src(self, addr: Ipv6Addr) -> Self;
+    pub fn ipv6_dst(self, addr: Ipv6Addr) -> Self;
+
+    // Layer 4
+    pub fn tcp_src(self, port: u16) -> Self;
+    pub fn tcp_dst(self, port: u16) -> Self;
+    pub fn udp_src(self, port: u16) -> Self;
+    pub fn udp_dst(self, port: u16) -> Self;
+
+    // ARP
+    pub fn arp_op(self, op: u16) -> Self;
+    pub fn arp_spa(self, addr: Ipv4Addr) -> Self;
+    pub fn arp_tpa(self, addr: Ipv4Addr) -> Self;
+
+    // ICMPv6/NDP
+    pub fn icmpv6_type(self, t: u8) -> Self;
+    pub fn icmpv6_code(self, c: u8) -> Self;
+    pub fn ipv6_nd_target(self, addr: Ipv6Addr) -> Self;
+
+    // Connection tracking
+    pub fn ct_state(self, state: u32) -> Self;
+    pub fn ct_state_masked(self, state: u32, mask: u32) -> Self;
+    pub fn ct_zone(self, zone: u16) -> Self;
+    pub fn ct_mark(self, mark: u32) -> Self;
+}
+```
+
+### ActionList Builder
+
+```rust
+pub struct ActionList { ... }
+
+impl ActionList {
+    pub fn new() -> Self;
+
+    // Basic actions
+    pub fn output(self, port: u32) -> Self;
+    pub fn output_in_port(self) -> Self;
+    pub fn controller(self, max_len: u16) -> Self;
+    pub fn drop(self) -> Self;
+    pub fn normal(self) -> Self;
+    pub fn flood(self) -> Self;
+
+    // VLAN actions
+    pub fn push_vlan(self, ethertype: u16) -> Self;
+    pub fn pop_vlan(self) -> Self;
+    pub fn set_vlan_vid(self, vid: u16) -> Self;
+
+    // Set field actions
+    pub fn set_eth_src(self, mac: [u8; 6]) -> Self;
+    pub fn set_eth_dst(self, mac: [u8; 6]) -> Self;
+    pub fn set_ipv4_src(self, addr: Ipv4Addr) -> Self;
+    pub fn set_ipv4_dst(self, addr: Ipv4Addr) -> Self;
+
+    // Connection tracking
+    pub fn ct(self, flags: u16, zone: u16, table: Option<u8>) -> Self;
+    pub fn ct_nat(self, flags: u16, zone: u16, table: Option<u8>, nat: NatConfig) -> Self;
+    pub fn ct_snat(self, zone: u16, table: Option<u8>, addr: Ipv4Addr) -> Self;
+    pub fn ct_dnat(self, zone: u16, table: Option<u8>, addr: Ipv4Addr) -> Self;
+
+    // Nicira extensions
+    pub fn nx_reg_load(self, header: OxmHeader, value: u64) -> Self;
+    pub fn nx_move(self, src: OxmHeader, dst: OxmHeader, n_bits: u16) -> Self;
+    pub fn nx_learn(self, learn: NxLearn) -> Self;
+    pub fn resubmit(self, port: Option<u16>, table: Option<u8>) -> Self;
+    pub fn set_tunnel_id(self, id: u64) -> Self;
+}
+```
+
+### NatConfig
+
+```rust
+pub struct NatConfig { ... }
+
+impl NatConfig {
+    // IPv4
+    pub fn snat(addr: Ipv4Addr) -> Self;
+    pub fn snat_range(min: Ipv4Addr, max: Ipv4Addr) -> Self;
+    pub fn dnat(addr: Ipv4Addr) -> Self;
+    pub fn dnat_range(min: Ipv4Addr, max: Ipv4Addr) -> Self;
+
+    // IPv6
+    pub fn snat_v6(addr: Ipv6Addr) -> Self;
+    pub fn snat_v6_range(min: Ipv6Addr, max: Ipv6Addr) -> Self;
+    pub fn dnat_v6(addr: Ipv6Addr) -> Self;
+    pub fn dnat_v6_range(min: Ipv6Addr, max: Ipv6Addr) -> Self;
+
+    // Options
+    pub fn port(self, port: u16) -> Self;
+    pub fn port_range(self, min: u16, max: u16) -> Self;
+    pub fn random(self) -> Self;
+    pub fn persistent(self) -> Self;
+}
+```
+
+### PacketIn / PacketOut
+
+```rust
+pub struct PacketIn {
+    pub buffer_id: u32,
+    pub total_len: u16,
+    pub reason: PacketInReason,
+    pub table_id: u8,
+    pub cookie: u64,
+    pub in_port: u32,
+    pub data: Vec<u8>,
+}
+
+pub struct PacketOut { ... }
+
+impl PacketOut {
+    pub fn new() -> Self;
+    pub fn buffer_id(self, id: u32) -> Self;
+    pub fn in_port(self, port: u32) -> Self;
+    pub fn actions(self, actions: ActionList) -> Self;
+    pub fn data(self, data: Vec<u8>) -> Self;
+}
+```
+
+### Connection Tracking Constants
+
+```rust
+pub mod ct_flags {
+    pub const COMMIT: u16 = 1 << 0;
+    pub const FORCE: u16 = 1 << 1;
+}
+
+pub mod ct_state {
+    pub const NEW: u32 = 1 << 0;
+    pub const EST: u32 = 1 << 1;
+    pub const REL: u32 = 1 << 2;
+    pub const RPL: u32 = 1 << 3;
+    pub const INV: u32 = 1 << 4;
+    pub const TRK: u32 = 1 << 5;
+    pub const SNAT: u32 = 1 << 6;
+    pub const DNAT: u32 = 1 << 7;
+}
+
+pub const CT_COMMIT: u16 = ct_flags::COMMIT;
+```
+
+---
+
+## rovs-ext
+
+High-level abstractions for common OVS patterns.
+
+### Flow Templates
+
+#### SnatGateway
+
+```rust
+pub struct SnatConfig { ... }
+
+impl SnatConfig {
+    pub fn new(external_ip: Ipv4Addr, internal_port: u32, external_port: u32) -> Self;
+    pub fn new_v6(external_ip: Ipv6Addr, internal_port: u32, external_port: u32) -> Self;
+    pub fn dual_stack(v4: Ipv4Addr, v6: Ipv6Addr, internal: u32, external: u32) -> Self;
+    pub fn zone(self, zone: u16) -> Self;
+    pub fn port_range(self, min: u16, max: u16) -> Self;
+    pub fn random(self) -> Self;
+    pub fn ip_range(self, max: Ipv4Addr) -> Self;
+    pub fn ip_v6_range(self, max: Ipv6Addr) -> Self;
+}
+
+pub struct SnatGateway { ... }
+
+impl SnatGateway {
+    pub fn new(config: SnatConfig) -> Self;
+    pub fn all_flows(&self, base_table: u8, priority: u16) -> Vec<Flow>;
+    pub async fn install(&self, conn: &mut VConn, base_table: u8, priority: u16) -> Result<()>;
+    pub async fn delete(&self, conn: &mut VConn, base_table: u8) -> Result<()>;
+}
+```
+
+#### DnatService
+
+```rust
+pub struct DnatConfig { ... }
+
+impl DnatConfig {
+    pub fn new(external_port: u32, internal_port: u32) -> Self;
+    pub fn zone(self, zone: u16) -> Self;
+    pub fn add_rule(self, rule: DnatRule) -> Self;
+    pub fn forward_tcp(self, ext_port: u16, int_ip: Ipv4Addr, int_port: u16) -> Self;
+    pub fn forward_udp(self, ext_port: u16, int_ip: Ipv4Addr, int_port: u16) -> Self;
+    pub fn forward_tcp_v6(self, ext_port: u16, int_ip: Ipv6Addr, int_port: u16) -> Self;
+    pub fn forward_udp_v6(self, ext_port: u16, int_ip: Ipv6Addr, int_port: u16) -> Self;
+}
+
+pub struct DnatService { ... }
+
+impl DnatService {
+    pub fn new(config: DnatConfig) -> Self;
+    pub fn all_flows(&self, base_table: u8, priority: u16) -> Vec<Flow>;
+    pub async fn install(&self, conn: &mut VConn, base_table: u8, priority: u16) -> Result<()>;
+}
+```
+
+#### MacNatFlows
+
+```rust
+pub struct MacNatConfig {
+    pub internal_mac: [u8; 6],
+    pub external_mac: [u8; 6],
+    pub internal_port: u32,
+    pub external_port: u32,
+}
+
+pub struct MacNatFlows { ... }
+
+impl MacNatFlows {
+    pub fn new(config: MacNatConfig) -> Self;
+    pub fn ipv4_outbound(&self, table: u8, priority: u16) -> Flow;
+    pub fn ipv4_inbound(&self, table: u8, priority: u16) -> Flow;
+    pub fn ipv6_outbound(&self, table: u8, priority: u16) -> Flow;
+    pub fn ipv6_inbound(&self, table: u8, priority: u16) -> Flow;
+    pub fn arp_outbound(&self, table: u8, priority: u16) -> Flow;
+    pub fn arp_inbound(&self, table: u8, priority: u16) -> Flow;
+    pub fn all_flows(&self, table: u8, priority: u16) -> Vec<Flow>;
+    pub async fn install(&self, conn: &mut VConn, table: u8, priority: u16) -> Result<()>;
+}
+```
+
+#### LearningSwitchFlows
+
+```rust
+pub struct LearningConfig { ... }
+
+impl LearningConfig {
+    pub fn new() -> Self;
+    pub fn idle_timeout(self, secs: u16) -> Self;
+    pub fn hard_timeout(self, secs: u16) -> Self;
+    pub fn priority(self, priority: u16) -> Self;
+    pub fn flood_ports(self, ports: Vec<u32>) -> Self;
+}
+
+pub struct LearningSwitchFlows { ... }
+
+impl LearningSwitchFlows {
+    pub fn new(config: LearningConfig) -> Self;
+    pub fn learning_flow(&self, table: u8, priority: u16) -> Flow;
+    pub fn flood_flow(&self, table: u8, priority: u16) -> Flow;
+    pub fn all_flows(&self, table: u8, priority: u16) -> Vec<Flow>;
+    pub async fn install(&self, conn: &mut VConn, table: u8, priority: u16) -> Result<()>;
+}
+```
+
+#### ArpProxyFlows / NdpProxyFlows
+
+```rust
+pub struct ArpProxyFlows { ... }
+
+impl ArpProxyFlows {
+    pub fn builder() -> ArpProxyBuilder;
+    pub fn all_flows(&self, table: u8, priority: u16) -> Vec<Flow>;
+    pub async fn install(&self, conn: &mut VConn, table: u8, priority: u16) -> Result<()>;
+}
+
+pub struct NdpProxyFlows { ... }
+
+impl NdpProxyFlows {
+    pub fn builder() -> NdpProxyBuilder;
+    pub fn to_controller_flows(&self, table: u8, priority: u16) -> Vec<Flow>;
+    pub async fn install(&self, conn: &mut VConn, table: u8, priority: u16) -> Result<()>;
+}
+```
+
+### Topology Builders
+
+#### BridgePair
+
+```rust
+pub struct BridgePair { ... }
+
+impl BridgePair {
+    pub fn new(bridge1: impl Into<String>, bridge2: impl Into<String>) -> Self;
+    pub fn vlans(self, vlans: Vec<u16>) -> Self;
+    pub fn patch_names(self, name1: impl Into<String>, name2: impl Into<String>) -> Self;
+    pub fn build_transaction(&self) -> Transaction;
+    pub async fn create(&self, client: &mut Client) -> Result<()>;
+}
+```
+
+#### VlanTrunk
+
+```rust
+pub struct VlanTrunk { ... }
+
+impl VlanTrunk {
+    pub fn new(bridge: impl Into<String>) -> Self;
+    pub fn existing_bridge(self) -> Self;
+    pub fn add_access_port(self, config: AccessPortConfig) -> Self;
+    pub fn add_trunk_port(self, config: TrunkPortConfig) -> Self;
+    pub fn build_transaction(&self) -> Transaction;
+    pub async fn create(&self, client: &mut Client) -> Result<()>;
+}
+
+pub struct AccessPortConfig { ... }
+
+impl AccessPortConfig {
+    pub fn new(name: impl Into<String>, vlan: u16) -> Self;
+    pub fn system(self) -> Self;  // Use existing system interface
+}
+
+pub struct TrunkPortConfig { ... }
+
+impl TrunkPortConfig {
+    pub fn new(name: impl Into<String>) -> Self;
+    pub fn vlans(self, vlans: Vec<u16>) -> Self;
+    pub fn all_vlans(self) -> Self;
+}
+```
+
+### Controller Framework
+
+```rust
+pub struct Controller { ... }
+
+impl Controller {
+    pub async fn new(addr: &Address, config: ControllerConfig) -> Result<Self>;
+    pub fn conn(&self) -> &VConn;
+    pub fn conn_mut(&mut self) -> &mut VConn;
+    pub fn register<H: PacketHandler + 'static>(&mut self, handler: H);
+    pub async fn run(&mut self) -> Result<()>;
+    pub async fn run_once(&mut self) -> Result<HandlerAction>;
+}
+
+pub struct ControllerConfig { ... }
+
+impl ControllerConfig {
+    pub fn new() -> Self;
+    pub fn log_unhandled(self, log: bool) -> Self;
+}
+
+pub trait PacketHandler: Send + Sync {
+    fn can_handle(&self, event: &PacketInEvent) -> bool;
+    fn handle(&mut self, event: &PacketInEvent, conn: &mut VConn)
+        -> impl Future<Output = Result<HandlerAction>> + Send;
+}
+
+pub enum HandlerAction {
+    Handled,
+    NotHandled,
+    Stop,
+}
+```
+
+### Protocol Handlers
+
+```rust
+// ARP Proxy Handler
+pub struct ArpProxyHandler { ... }
+
+impl ArpProxyHandler {
+    pub fn new() -> Self;
+    pub fn add_entry(&mut self, ip: [u8; 4], mac: [u8; 6]);
+}
+
+// NDP Proxy Handler
+pub struct NdpProxyHandler { ... }
+
+impl NdpProxyHandler {
+    pub fn new() -> Self;
+    pub fn add_entry(&mut self, ip: Ipv6Addr, mac: [u8; 6]);
+}
+```
+
+### Utilities
+
+```rust
+// MAC/IP conversion
+pub fn parse_mac(s: &str) -> Result<[u8; 6]>;
+pub fn format_mac(mac: &[u8; 6]) -> String;
+pub fn mac_to_u64(mac: &[u8; 6]) -> u64;
+
+pub fn parse_ipv4(s: &str) -> Result<[u8; 4]>;
+pub fn format_ipv4(ip: &[u8; 4]) -> String;
+pub fn ipv4_to_u32(ip: &[u8; 4]) -> u32;
+
+// Port mapping
+pub struct PortMapper { ... }
+
+impl PortMapper {
+    pub fn new() -> Self;
+    pub fn insert(&mut self, name: impl Into<String>, ofport: u32);
+    pub fn get(&self, name: &str) -> Option<u32>;
+    pub fn require(&self, name: &str) -> Result<u32>;
+    pub fn remove_by_name(&mut self, name: &str) -> Option<u32>;
+    pub fn remove_by_ofport(&mut self, ofport: u32) -> Option<String>;
 }
 ```
 
@@ -725,15 +616,10 @@ pub enum Error {
 Shared types across crates.
 
 ```rust
-// File: rovs-types/src/lib.rs
-
-// Re-exports commonly used types
 pub use uuid::Uuid;
-pub use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 
-// MAC address type (if needed)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct MacAddr([u8; 6]);
+pub struct MacAddr(pub [u8; 6]);
 
 impl MacAddr {
     pub fn new(bytes: [u8; 6]) -> Self;
@@ -741,248 +627,5 @@ impl MacAddr {
     pub fn as_bytes(&self) -> &[u8; 6];
     pub fn is_broadcast(&self) -> bool;
     pub fn is_multicast(&self) -> bool;
-}
-
-impl FromStr for MacAddr { ... }
-impl Display for MacAddr { ... }
-```
-
----
-
-## rovs-openflow
-
-OpenFlow protocol implementation (in progress).
-
-### Current Implementation
-
-```rust
-// File: rovs-openflow/src/oxm.rs
-
-/// OXM (OpenFlow Extensible Match) class
-#[repr(u16)]
-pub enum OxmClass {
-    Nxm0 = 0x0000,           // Nicira extended match
-    Nxm1 = 0x0001,           // Nicira extended match
-    OpenflowBasic = 0x8000,  // Standard OpenFlow match fields
-}
-
-/// OXM field types (OpenFlow 1.3)
-#[repr(u8)]
-pub enum OxmField {
-    InPort = 0,
-    InPhyPort = 1,
-    Metadata = 2,
-    EthDst = 3,
-    EthSrc = 4,
-    EthType = 5,
-    VlanVid = 6,
-    VlanPcp = 7,
-    IpDscp = 8,
-    IpEcn = 9,
-    IpProto = 10,
-    Ipv4Src = 11,
-    Ipv4Dst = 12,
-    TcpSrc = 13,
-    TcpDst = 14,
-    UdpSrc = 15,
-    UdpDst = 16,
-    SctpSrc = 17,
-    SctpDst = 18,
-    Icmpv4Type = 19,
-    Icmpv4Code = 20,
-    ArpOp = 21,
-    ArpSpa = 22,
-    ArpTpa = 23,
-    ArpSha = 24,
-    ArpTha = 25,
-    Ipv6Src = 26,
-    Ipv6Dst = 27,
-    Ipv6Flabel = 28,
-    Icmpv6Type = 29,
-    Icmpv6Code = 30,
-    Ipv6NdTarget = 31,
-    Ipv6NdSll = 32,
-    Ipv6NdTll = 33,
-    MplsLabel = 34,
-    MplsTc = 35,
-    MplsBos = 36,
-    PbbIsid = 37,
-    TunnelId = 38,
-    Ipv6Exthdr = 39,
-}
-
-/// Build an OXM header word
-pub fn oxm_header(
-    class: OxmClass,
-    field: OxmField,
-    has_mask: bool,
-    length: u8,
-) -> u32;
-```
-
-### Planned API (see openflow-planning.md)
-
-```rust
-// Future: rovs-openflow/src/flow.rs
-
-pub struct Flow {
-    pub table_id: u8,
-    pub priority: u16,
-    pub cookie: u64,
-    pub idle_timeout: u16,
-    pub hard_timeout: u16,
-    pub match_fields: Vec<Match>,
-    pub instructions: Vec<Instruction>,
-}
-
-impl Flow {
-    pub fn builder() -> FlowBuilder;
-}
-
-pub struct FlowBuilder { ... }
-
-impl FlowBuilder {
-    pub fn table(self, id: u8) -> Self;
-    pub fn priority(self, priority: u16) -> Self;
-    pub fn cookie(self, cookie: u64) -> Self;
-    pub fn idle_timeout(self, seconds: u16) -> Self;
-    pub fn hard_timeout(self, seconds: u16) -> Self;
-
-    // Match fields
-    pub fn match_in_port(self, port: u32) -> Self;
-    pub fn match_eth_dst(self, mac: MacAddr) -> Self;
-    pub fn match_eth_src(self, mac: MacAddr) -> Self;
-    pub fn match_eth_type(self, ethertype: u16) -> Self;
-    pub fn match_vlan_vid(self, vid: u16) -> Self;
-    pub fn match_ipv4_src(self, addr: Ipv4Addr) -> Self;
-    pub fn match_ipv4_src_masked(self, addr: Ipv4Addr, mask: Ipv4Addr) -> Self;
-    pub fn match_ipv4_dst(self, addr: Ipv4Addr) -> Self;
-    pub fn match_tcp_dst(self, port: u16) -> Self;
-    // ... more match methods
-
-    // Actions
-    pub fn action_output(self, port: u32) -> Self;
-    pub fn action_drop(self) -> Self;
-    pub fn action_set_field(self, field: Match) -> Self;
-    pub fn action_push_vlan(self, ethertype: u16) -> Self;
-    pub fn action_pop_vlan(self) -> Self;
-    pub fn action_goto_table(self, table_id: u8) -> Self;
-    // ... more action methods
-
-    pub fn build(self) -> Flow;
-}
-```
-
----
-
-## Usage Examples
-
-### Complete OVSDB Workflow
-
-```rust
-use rovs_ovsdb::{Client, ClientConfig, Transaction, MonitorVersion};
-
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Connect with custom config
-    let config = ClientConfig::default()
-        .database("Open_vSwitch")
-        .monitor_version(MonitorVersion::V1);
-
-    let mut client = Client::connect_with_config(
-        "unix:/var/run/openvswitch/db.sock",
-        config,
-    ).await?;
-
-    // Read existing topology
-    println!("Current bridges:");
-    for row in client.idl().rows("Bridge") {
-        let name = row.get_string("name").unwrap_or("?");
-        let ports = row.get_set("ports");
-        println!("  {} ({} ports)", name, ports.len());
-    }
-
-    // Create topology
-    let mut txn = Transaction::new("Open_vSwitch");
-
-    // Create two bridges
-    let (br_int, _, _) = txn.create_bridge("br-int");
-    let (br_ext, _, _) = txn.create_bridge("br-ext");
-
-    // Add ports
-    txn.add_internal_port("br-int", "vport0");
-    txn.add_vlan_port("br-int", "vlan100", 100);
-
-    // Connect bridges with patch ports
-    txn.add_patch_ports("br-int", "br-ext", None, None);
-
-    // Commit
-    if client.commit(&mut txn).await? {
-        println!("Topology created successfully");
-
-        // Get actual UUIDs
-        if let Some(uuid) = txn.get_uuid("row0") {
-            println!("br-int interface UUID: {}", uuid);
-        }
-    }
-
-    // Monitor for changes
-    loop {
-        client.wait().await?;
-        println!("Update received at seqno {}", client.idl().change_seqno());
-
-        // Process changes
-        for row in client.idl().rows("Interface") {
-            if let Some(ofport) = row.get_i64("ofport") {
-                let name = row.get_string("name").unwrap_or("?");
-                println!("Interface {} has ofport {}", name, ofport);
-            }
-        }
-    }
-}
-```
-
-### Finding Specific Rows
-
-```rust
-// Find bridge by name
-let br0 = client.idl()
-    .find_row("Bridge", |row| row.get_string("name") == Some("br0"));
-
-// Find all internal interfaces
-let internal_ifaces: Vec<_> = client.idl()
-    .find_rows("Interface", |row| row.get_string("type") == Some("internal"));
-
-// Get all port UUIDs for a bridge
-if let Some(bridge) = br0 {
-    let port_uuids: Vec<Uuid> = bridge.get_set("ports")
-        .into_iter()
-        .filter_map(|atom| atom.as_uuid())
-        .collect();
-}
-```
-
-### Transaction Error Handling
-
-```rust
-let mut txn = Transaction::new("Open_vSwitch");
-txn.create_bridge("test-br");
-
-match client.commit(&mut txn).await {
-    Ok(true) => {
-        println!("Success!");
-        // Access UUID map
-        for (name, uuid) in txn.uuid_map() {
-            println!("{} -> {}", name, uuid);
-        }
-    }
-    Ok(false) => {
-        // Transaction failed (constraint violation, etc.)
-        println!("Transaction failed: {:?}", txn.status());
-    }
-    Err(e) => {
-        // RPC/connection error
-        println!("Error: {}", e);
-    }
 }
 ```
