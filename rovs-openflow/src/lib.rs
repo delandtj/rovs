@@ -31,7 +31,7 @@ mod packet_in;
 mod packet_out;
 mod vconn;
 
-pub use action::{nxm, Action, ActionList, LearnSpec, NxLearn, OutputPort, CT_COMMIT};
+pub use action::{nxm, Action, ActionList, LearnSpec, NatConfig, NxLearn, OutputPort, CT_COMMIT};
 pub use error::{Error, OfError, OfErrorType};
 pub use flow::{Flow, FlowCommand, FlowFlags, FlowStats};
 pub use instruction::{Instruction, InstructionList};

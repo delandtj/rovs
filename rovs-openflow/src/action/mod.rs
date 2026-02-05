@@ -10,7 +10,7 @@ pub mod types;
 #[cfg(test)]
 mod tests;
 
-use std::net::Ipv4Addr;
+use std::net::{Ipv4Addr, Ipv6Addr};
 
 use crate::match_fields::MacAddr;
 use crate::oxm::{OxmClass, OxmField};
@@ -18,19 +18,197 @@ use crate::oxm::{OxmClass, OxmField};
 // Re-export public types
 #[allow(unused_imports)]
 pub use nicira::{learn_flags, LearnSpec, NxLearn};
-pub use types::{ct_flags, port, NICIRA_VENDOR_ID};
+pub use types::{ct_flags, nat_flags, nat_range, port, NICIRA_VENDOR_ID};
 
 // Use ActionType internally (NxActionSubtype is used by nicira module)
 use types::ActionType;
 
 // Import nicira encoding/decoding functions
 use nicira::{
-    decode_nicira_action, encode_nx_ct, encode_nx_learn, encode_nx_move, encode_nx_reg_load_nxm,
-    encode_nx_resubmit, encode_set_tunnel_id,
+    decode_nicira_action, encode_nx_ct, encode_nx_ct_nat, encode_nx_learn, encode_nx_move,
+    encode_nx_reg_load_nxm, encode_nx_resubmit, encode_set_tunnel_id,
 };
 
 /// CT commit flag (shorthand).
 pub const CT_COMMIT: u16 = ct_flags::COMMIT;
+
+/// NAT configuration for use with ct() action.
+///
+/// # Examples
+///
+/// ```ignore
+/// // SNAT to a single IP
+/// NatConfig::snat(Ipv4Addr::new(10, 0, 0, 1))
+///
+/// // SNAT with IP range
+/// NatConfig::snat_range(
+///     Ipv4Addr::new(10, 0, 0, 1),
+///     Ipv4Addr::new(10, 0, 0, 10),
+/// )
+///
+/// // DNAT with port
+/// NatConfig::dnat(Ipv4Addr::new(192, 168, 1, 1)).port(8080)
+///
+/// // SNAT with port range and random selection
+/// NatConfig::snat(Ipv4Addr::new(10, 0, 0, 1))
+///     .port_range(5000, 6000)
+///     .random()
+/// ```
+#[derive(Debug, Clone)]
+pub struct NatConfig {
+    /// NAT flags (SRC/DST, persistent, hash, random)
+    pub flags: u16,
+    /// Minimum IPv4 address (if IPv4 NAT)
+    pub ipv4_min: Option<Ipv4Addr>,
+    /// Maximum IPv4 address (if range)
+    pub ipv4_max: Option<Ipv4Addr>,
+    /// Minimum IPv6 address (if IPv6 NAT)
+    pub ipv6_min: Option<Ipv6Addr>,
+    /// Maximum IPv6 address (if range)
+    pub ipv6_max: Option<Ipv6Addr>,
+    /// Minimum port (if port NAT)
+    pub port_min: Option<u16>,
+    /// Maximum port (if port range)
+    pub port_max: Option<u16>,
+}
+
+impl NatConfig {
+    /// Create a SNAT configuration with a single IPv4 address.
+    pub fn snat(addr: Ipv4Addr) -> Self {
+        Self {
+            flags: nat_flags::SRC,
+            ipv4_min: Some(addr),
+            ipv4_max: None,
+            ipv6_min: None,
+            ipv6_max: None,
+            port_min: None,
+            port_max: None,
+        }
+    }
+
+    /// Create a SNAT configuration with an IPv4 address range.
+    pub fn snat_range(min: Ipv4Addr, max: Ipv4Addr) -> Self {
+        Self {
+            flags: nat_flags::SRC,
+            ipv4_min: Some(min),
+            ipv4_max: Some(max),
+            ipv6_min: None,
+            ipv6_max: None,
+            port_min: None,
+            port_max: None,
+        }
+    }
+
+    /// Create a DNAT configuration with a single IPv4 address.
+    pub fn dnat(addr: Ipv4Addr) -> Self {
+        Self {
+            flags: nat_flags::DST,
+            ipv4_min: Some(addr),
+            ipv4_max: None,
+            ipv6_min: None,
+            ipv6_max: None,
+            port_min: None,
+            port_max: None,
+        }
+    }
+
+    /// Create a DNAT configuration with an IPv4 address range.
+    pub fn dnat_range(min: Ipv4Addr, max: Ipv4Addr) -> Self {
+        Self {
+            flags: nat_flags::DST,
+            ipv4_min: Some(min),
+            ipv4_max: Some(max),
+            ipv6_min: None,
+            ipv6_max: None,
+            port_min: None,
+            port_max: None,
+        }
+    }
+
+    /// Create a SNAT configuration with a single IPv6 address.
+    pub fn snat_v6(addr: Ipv6Addr) -> Self {
+        Self {
+            flags: nat_flags::SRC,
+            ipv4_min: None,
+            ipv4_max: None,
+            ipv6_min: Some(addr),
+            ipv6_max: None,
+            port_min: None,
+            port_max: None,
+        }
+    }
+
+    /// Create a DNAT configuration with a single IPv6 address.
+    pub fn dnat_v6(addr: Ipv6Addr) -> Self {
+        Self {
+            flags: nat_flags::DST,
+            ipv4_min: None,
+            ipv4_max: None,
+            ipv6_min: Some(addr),
+            ipv6_max: None,
+            port_min: None,
+            port_max: None,
+        }
+    }
+
+    /// Set a single port for NAT.
+    pub fn port(mut self, port: u16) -> Self {
+        self.port_min = Some(port);
+        self.port_max = None;
+        self
+    }
+
+    /// Set a port range for NAT.
+    pub fn port_range(mut self, min: u16, max: u16) -> Self {
+        self.port_min = Some(min);
+        self.port_max = Some(max);
+        self
+    }
+
+    /// Use persistent NAT mapping (survives restarts).
+    pub fn persistent(mut self) -> Self {
+        self.flags |= nat_flags::PERSISTENT;
+        self
+    }
+
+    /// Use hash-based port selection.
+    pub fn hash(mut self) -> Self {
+        self.flags |= nat_flags::PROTO_HASH;
+        self.flags &= !nat_flags::PROTO_RANDOM;
+        self
+    }
+
+    /// Use random port selection.
+    pub fn random(mut self) -> Self {
+        self.flags |= nat_flags::PROTO_RANDOM;
+        self.flags &= !nat_flags::PROTO_HASH;
+        self
+    }
+
+    /// Calculate the range_present flags for encoding.
+    pub(crate) fn range_present(&self) -> u16 {
+        let mut flags = 0u16;
+        if self.ipv4_min.is_some() {
+            flags |= nat_range::IPV4_MIN;
+        }
+        if self.ipv4_max.is_some() {
+            flags |= nat_range::IPV4_MAX;
+        }
+        if self.ipv6_min.is_some() {
+            flags |= nat_range::IPV6_MIN;
+        }
+        if self.ipv6_max.is_some() {
+            flags |= nat_range::IPV6_MAX;
+        }
+        if self.port_min.is_some() {
+            flags |= nat_range::PROTO_MIN;
+        }
+        if self.port_max.is_some() {
+            flags |= nat_range::PROTO_MAX;
+        }
+        flags
+    }
+}
 
 /// An OpenFlow action.
 #[derive(Debug, Clone)]
@@ -85,6 +263,13 @@ pub enum Action {
         flags: u16,
         zone: u16,
         table: Option<u8>,
+    },
+    /// Conntrack with NAT action (Nicira extension)
+    NxCtNat {
+        flags: u16,
+        zone: u16,
+        table: Option<u8>,
+        nat: NatConfig,
     },
     /// Move/copy bits between fields (Nicira extension)
     NxMove {
@@ -284,6 +469,88 @@ impl ActionList {
     /// Commits the connection to the connection tracking table.
     pub fn ct_commit(mut self, zone: u16) -> Self {
         self.actions.push(Action::NxCt { flags: CT_COMMIT, zone, table: None });
+        self
+    }
+
+    /// Connection tracking with NAT (Nicira extension).
+    ///
+    /// Performs connection tracking with Network Address Translation.
+    ///
+    /// # Arguments
+    ///
+    /// - `flags`: CT flags (commit, force, etc.)
+    /// - `zone`: CT zone ID
+    /// - `table`: Table to recirculate to after CT (None = no recirc)
+    /// - `nat`: NAT configuration (SNAT or DNAT)
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// use rovs_openflow::{ActionList, NatConfig, CT_COMMIT};
+    /// use std::net::Ipv4Addr;
+    ///
+    /// // SNAT to 10.0.0.1
+    /// ActionList::new().ct_nat(
+    ///     CT_COMMIT,
+    ///     1,
+    ///     Some(2),
+    ///     NatConfig::snat(Ipv4Addr::new(10, 0, 0, 1)),
+    /// )
+    /// ```
+    pub fn ct_nat(mut self, flags: u16, zone: u16, table: Option<u8>, nat: NatConfig) -> Self {
+        self.actions.push(Action::NxCtNat { flags, zone, table, nat });
+        self
+    }
+
+    /// Connection tracking with SNAT (Nicira extension).
+    ///
+    /// Source NAT: translates the source IP address.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// use std::net::Ipv4Addr;
+    ///
+    /// // SNAT to 10.0.0.1, commit and recirculate to table 2
+    /// ActionList::new().ct_snat(
+    ///     1,                              // zone
+    ///     Some(2),                        // recirc table
+    ///     Ipv4Addr::new(10, 0, 0, 1),     // NAT address
+    /// )
+    /// ```
+    pub fn ct_snat(mut self, zone: u16, table: Option<u8>, addr: Ipv4Addr) -> Self {
+        self.actions.push(Action::NxCtNat {
+            flags: CT_COMMIT,
+            zone,
+            table,
+            nat: NatConfig::snat(addr),
+        });
+        self
+    }
+
+    /// Connection tracking with DNAT (Nicira extension).
+    ///
+    /// Destination NAT: translates the destination IP address.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// use std::net::Ipv4Addr;
+    ///
+    /// // DNAT to 192.168.1.100:8080
+    /// ActionList::new().ct_dnat(
+    ///     1,
+    ///     Some(2),
+    ///     Ipv4Addr::new(192, 168, 1, 100),
+    /// )
+    /// ```
+    pub fn ct_dnat(mut self, zone: u16, table: Option<u8>, addr: Ipv4Addr) -> Self {
+        self.actions.push(Action::NxCtNat {
+            flags: CT_COMMIT,
+            zone,
+            table,
+            nat: NatConfig::dnat(addr),
+        });
         self
     }
 
@@ -491,6 +758,9 @@ impl Action {
             Self::NxResubmit { port, table } => encode_nx_resubmit(*port, *table),
             Self::NxLearn(learn) => encode_nx_learn(learn),
             Self::NxCt { flags, zone, table } => encode_nx_ct(*flags, *zone, *table),
+            Self::NxCtNat { flags, zone, table, nat } => {
+                encode_nx_ct_nat(*flags, *zone, *table, nat)
+            }
             Self::NxMove { src_field, dst_field, n_bits, src_ofs, dst_ofs } => {
                 encode_nx_move(*src_field, *dst_field, *n_bits, *src_ofs, *dst_ofs)
             }

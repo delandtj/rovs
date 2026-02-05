@@ -8,7 +8,11 @@
 //! Flow pipeline:
 //! - Table 0: Send all packets through connection tracking, recirculate to table 1
 //! - Table 1: Match on `ct_state` to allow/deny traffic
+//! - Table 2: Output flows after ct(commit) recirculation
 //!
+//! Note: When matching ct_state AND committing, you must use ct(commit, zone, Some(table))
+//! which recirculates to another table for output. Using ct_commit(zone).output(port)
+//! directly doesn't work with ct_state matching.
 //! Run with:
 //! ```sh
 //! # Start OVS container with OpenFlow support:
@@ -19,7 +23,7 @@
 //! ```
 
 use rovs_openflow::oxm::ct_state;
-use rovs_openflow::{ActionList, Flow, Match, VConn};
+use rovs_openflow::{ActionList, Flow, Match, VConn, CT_COMMIT};
 use rovs_transport::Address;
 
 fn get_openflow_addr() -> Address {
@@ -41,6 +45,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("\nClearing flow tables...");
     conn.send_flow_sync(&Flow::delete().table(0)).await?;
     conn.send_flow_sync(&Flow::delete().table(1)).await?;
+    conn.send_flow_sync(&Flow::delete().table(2)).await?;
 
     // Define ports
     const INTERNAL_PORT: u32 = 1; // Internal network (trusted)
@@ -149,22 +154,38 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Rule 4: Allow new outbound connections (internal -> external)
     // ct_state=+trk+new means tracked and new connection
-    let allow_outbound_new = Flow::add()
+    // Note: ct(commit) requires eth_type in match - OVS validates this at flow install time
+    // We need separate flows for IPv4 and IPv6
+
+    // 4a: IPv4 outbound
+    let allow_outbound_new_ipv4 = Flow::add()
         .table(1)
         .priority(80)
         .match_fields(
             Match::new()
                 .in_port(INTERNAL_PORT)
+                .eth_type(0x0800) // IPv4 - required for ct(commit)
                 .ct_state_masked(ct_state::TRK | ct_state::NEW, ct_state::TRK | ct_state::NEW),
         )
-        .actions(
-            ActionList::new()
-                .ct_commit(CT_ZONE) // Commit new connection
-                .output(EXTERNAL_PORT),
-        );
+        .actions(ActionList::new().ct(CT_COMMIT, CT_ZONE, Some(2)));
 
-    conn.send_flow_sync(&allow_outbound_new).await?;
-    println!("  Added: in_port={INTERNAL_PORT}, ct_state=+trk+new -> ct(commit), output:{EXTERNAL_PORT}");
+    conn.send_flow_sync(&allow_outbound_new_ipv4).await?;
+    println!("  Added: in_port={INTERNAL_PORT}, eth_type=IPv4, ct_state=+trk+new -> ct(commit, table=2)");
+
+    // 4b: IPv6 outbound
+    let allow_outbound_new_ipv6 = Flow::add()
+        .table(1)
+        .priority(80)
+        .match_fields(
+            Match::new()
+                .in_port(INTERNAL_PORT)
+                .eth_type(0x86dd) // IPv6 - required for ct(commit)
+                .ct_state_masked(ct_state::TRK | ct_state::NEW, ct_state::TRK | ct_state::NEW),
+        )
+        .actions(ActionList::new().ct(CT_COMMIT, CT_ZONE, Some(2)));
+
+    conn.send_flow_sync(&allow_outbound_new_ipv6).await?;
+    println!("  Added: in_port={INTERNAL_PORT}, eth_type=IPv6, ct_state=+trk+new -> ct(commit, table=2)");
 
     // Rule 5: Allow specific inbound services (example: SSH on port 22)
     let allow_ssh_inbound = Flow::add()
@@ -178,14 +199,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .tcp_dst(22)
                 .ct_state_masked(ct_state::TRK | ct_state::NEW, ct_state::TRK | ct_state::NEW),
         )
-        .actions(
-            ActionList::new()
-                .ct_commit(CT_ZONE)
-                .output(INTERNAL_PORT),
-        );
+        .actions(ActionList::new().ct(CT_COMMIT, CT_ZONE, Some(2)));
 
     conn.send_flow_sync(&allow_ssh_inbound).await?;
-    println!("  Added: in_port={EXTERNAL_PORT}, tcp_dst=22, ct_state=+trk+new -> ct(commit), output:{INTERNAL_PORT}");
+    println!("  Added: in_port={EXTERNAL_PORT}, tcp_dst=22, ct_state=+trk+new -> ct(commit, zone={CT_ZONE}, table=2)");
 
     // Rule 6: Allow ICMP echo requests (ping) inbound
     let allow_ping_inbound = Flow::add()
@@ -199,14 +216,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .icmp_type(8) // Echo request
                 .ct_state_masked(ct_state::TRK | ct_state::NEW, ct_state::TRK | ct_state::NEW),
         )
-        .actions(
-            ActionList::new()
-                .ct_commit(CT_ZONE)
-                .output(INTERNAL_PORT),
-        );
+        .actions(ActionList::new().ct(CT_COMMIT, CT_ZONE, Some(2)));
 
     conn.send_flow_sync(&allow_ping_inbound).await?;
-    println!("  Added: in_port={EXTERNAL_PORT}, icmp_type=8, ct_state=+trk+new -> ct(commit), output:{INTERNAL_PORT}");
+    println!("  Added: in_port={EXTERNAL_PORT}, icmp_type=8, ct_state=+trk+new -> ct(commit, zone={CT_ZONE}, table=2)");
 
     // Default: drop all other new inbound connections
     let drop_inbound_new = Flow::add()
@@ -229,6 +242,43 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .actions(ActionList::new().drop());
 
     conn.send_flow_sync(&drop_default_t1).await?;
+    println!("  Added: default -> DROP");
+
+    // ==========================================================================
+    // Table 2: Output After Commit
+    // ==========================================================================
+    // After ct(commit, zone, table=2) recirculates here, output based on in_port.
+    // The packet retains its original in_port after recirculation.
+
+    println!("\n--- Table 2: Output After Commit ---");
+
+    // Outbound: packets from internal port -> output to external
+    let output_outbound = Flow::add()
+        .table(2)
+        .priority(100)
+        .match_fields(Match::new().in_port(INTERNAL_PORT))
+        .actions(ActionList::new().output(EXTERNAL_PORT));
+
+    conn.send_flow_sync(&output_outbound).await?;
+    println!("  Added: in_port={INTERNAL_PORT} -> output:{EXTERNAL_PORT}");
+
+    // Inbound: packets from external port -> output to internal
+    let output_inbound = Flow::add()
+        .table(2)
+        .priority(100)
+        .match_fields(Match::new().in_port(EXTERNAL_PORT))
+        .actions(ActionList::new().output(INTERNAL_PORT));
+
+    conn.send_flow_sync(&output_inbound).await?;
+    println!("  Added: in_port={EXTERNAL_PORT} -> output:{INTERNAL_PORT}");
+
+    // Default table 2: drop (shouldn't reach here)
+    let drop_default_t2 = Flow::add()
+        .table(2)
+        .priority(0)
+        .actions(ActionList::new().drop());
+
+    conn.send_flow_sync(&drop_default_t2).await?;
     println!("  Added: default -> DROP");
 
     // ==========================================================================

@@ -219,6 +219,112 @@ pub(crate) fn encode_nx_ct(flags: u16, zone: u16, table: Option<u8>) -> Vec<u8> 
     buf
 }
 
+/// Encode NxCt with NAT (connection tracking with NAT) action.
+pub(crate) fn encode_nx_ct_nat(
+    flags: u16,
+    zone: u16,
+    table: Option<u8>,
+    nat: &super::NatConfig,
+) -> Vec<u8> {
+    // First encode the nested NAT action
+    let nat_action = encode_nx_nat(nat);
+
+    // CT action format with nested actions:
+    // NX header (10) + flags (2) + zone_src (4) + zone (2) + recirc_table (1) + pad (1) + alg (2) + nested_actions
+    // Note: The length includes the nested actions
+    let ct_header_len = 24; // Base CT action size
+    let total_len = ct_header_len + nat_action.len();
+    // Round up to 8-byte boundary
+    let padded_len = (total_len + 7) & !7;
+
+    let mut buf = Vec::with_capacity(padded_len);
+
+    // Action header
+    buf.extend((ActionType::Experimenter as u16).to_be_bytes());
+    buf.extend((padded_len as u16).to_be_bytes());
+    buf.extend(NICIRA_VENDOR_ID.to_be_bytes());
+    buf.extend((NxActionSubtype::Ct as u16).to_be_bytes());
+
+    // CT fields
+    buf.extend(flags.to_be_bytes());
+    buf.extend(0u32.to_be_bytes()); // zone_src (0 = use zone_imm field)
+    buf.extend(zone.to_be_bytes()); // zone_imm
+    buf.push(table.unwrap_or(255)); // recirc_table (255 = no recirculation)
+    buf.extend([0u8; 3]); // pad
+    buf.extend(0u16.to_be_bytes()); // alg (0 = no ALG)
+
+    // Nested NAT action
+    buf.extend(nat_action);
+
+    // Pad to 8-byte boundary
+    buf.resize(padded_len, 0);
+    buf
+}
+
+/// Encode NxNat action (used as nested action in ct).
+///
+/// NAT action format:
+/// NX header (10) + pad (2) + flags (2) + range_present (2) + [optional fields]
+fn encode_nx_nat(nat: &super::NatConfig) -> Vec<u8> {
+    let range_present = nat.range_present();
+
+    // Calculate the size of optional fields
+    let mut optional_len = 0;
+    if nat.ipv4_min.is_some() {
+        optional_len += 4;
+    }
+    if nat.ipv4_max.is_some() {
+        optional_len += 4;
+    }
+    if nat.ipv6_min.is_some() {
+        optional_len += 16;
+    }
+    if nat.ipv6_max.is_some() {
+        optional_len += 16;
+    }
+    if nat.port_min.is_some() {
+        optional_len += 2;
+    }
+    if nat.port_max.is_some() {
+        optional_len += 2;
+    }
+
+    // NAT header: 10 (NX header) + 2 (pad) + 2 (flags) + 2 (range_present) = 16
+    let header_len = 16;
+    let total_len = header_len + optional_len;
+    // Round up to 8-byte boundary
+    let padded_len = (total_len + 7) & !7;
+
+    let mut buf = encode_nx_header(NxActionSubtype::Nat, padded_len as u16);
+    buf.extend([0u8; 2]); // pad
+    buf.extend(nat.flags.to_be_bytes());
+    buf.extend(range_present.to_be_bytes());
+
+    // Optional fields in order: ipv4_min, ipv4_max, ipv6_min, ipv6_max, port_min, port_max
+    if let Some(addr) = nat.ipv4_min {
+        buf.extend(addr.octets());
+    }
+    if let Some(addr) = nat.ipv4_max {
+        buf.extend(addr.octets());
+    }
+    if let Some(addr) = nat.ipv6_min {
+        buf.extend(addr.octets());
+    }
+    if let Some(addr) = nat.ipv6_max {
+        buf.extend(addr.octets());
+    }
+    if let Some(port) = nat.port_min {
+        buf.extend(port.to_be_bytes());
+    }
+    if let Some(port) = nat.port_max {
+        buf.extend(port.to_be_bytes());
+    }
+
+    // Pad to 8-byte boundary
+    buf.resize(padded_len, 0);
+    buf
+}
+
 /// Encode NxRegLoad action for loading immediate value into register.
 ///
 /// Format: `load:value->NXM_NX_REGn[start..end]`

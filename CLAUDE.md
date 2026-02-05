@@ -114,6 +114,7 @@ OVS-specific actions beyond standard OpenFlow:
 - `NxMove` - Copy bits between fields
 - `NxLearn` - Dynamic flow learning
 - `resubmit(port, table)` - Resubmit packet to another table
+- `ct()` - Connection tracking with optional NAT
 
 Example MAC NAT with Nicira:
 ```rust
@@ -121,6 +122,25 @@ ActionList::new()
     .nx_reg_load(OxmHeader::EthSrc, mac_bytes)  // Set source MAC
     .nx_move(OxmHeader::EthDst, OxmHeader::EthSrc, 48)  // Copy dst->src
     .output(1)
+```
+
+Example IP NAT with connection tracking:
+```rust
+use rovs_openflow::{ActionList, NatConfig, CT_COMMIT};
+use std::net::Ipv4Addr;
+
+// Simple SNAT
+ActionList::new().ct_snat(1, Some(2), Ipv4Addr::new(10, 0, 0, 1))
+
+// SNAT with port range
+let nat = NatConfig::snat(Ipv4Addr::new(10, 0, 0, 1))
+    .port_range(5000, 6000)
+    .random();
+ActionList::new().ct_nat(CT_COMMIT, 1, Some(2), nat)
+
+// DNAT to specific IP:port
+let nat = NatConfig::dnat(Ipv4Addr::new(192, 168, 1, 100)).port(8080);
+ActionList::new().ct_nat(CT_COMMIT, 1, Some(2), nat)
 ```
 
 ## Testing with Container (Recommended)
@@ -209,6 +229,8 @@ Set `OVSDB_ADDR=unix:/tmp/ovs-test/db.sock` for examples.
 - OXM (OpenFlow Extensible Match) field format: class(2) + field(7) + hasmask(1) + length(1) + value
 - Packet-In reasons: NoMatch (table miss), Action (output to controller), InvalidTtl
 - Linux interface names limited to 15 characters (IFNAMSIZ - 1)
+- **Connection tracking (ct action)**: When using `ct()` with commit flag, OVS requires `eth_type` in the match (0x0800 for IPv4, 0x86dd for IPv6). Without it: `BadAction` error code 10. See `rovs-ext/examples/test_ct.rs`.
+- **NAT with ct action**: Use `ct_nat()`, `ct_snat()`, or `ct_dnat()` for IP address translation. See `rovs-ext/examples/test_nat.rs`.
 
 ## rovs-ext Crate
 
@@ -232,6 +254,8 @@ Available templates:
 - `ArpProxyFlows` - ARP proxy using Nicira extensions
 - `NdpProxyFlows` - NDP proxy (requires controller handler)
 - `LearningSwitchFlows` - MAC learning switch with NxLearn
+- `SnatGateway` - SNAT for outbound traffic (like iptables MASQUERADE)
+- `DnatService` - DNAT for port forwarding to internal servers
 - VLAN helpers: `push_vlan_flow`, `pop_vlan_flow`, `VlanAccessPort`
 
 ### Topology Builders

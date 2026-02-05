@@ -95,10 +95,44 @@ pub enum NxActionSubtype {
     RegLoad = 7,
     /// Connection tracking
     Ct = 35,
+    /// NAT (nested in CT action)
+    Nat = 36,
     /// Learn action
     Learn = 16,
     /// Set field (Nicira version)
     RegLoad2 = 33,
+}
+
+/// NAT action flags.
+#[allow(dead_code)]
+pub mod nat_flags {
+    /// Source NAT (SNAT)
+    pub const SRC: u16 = 1 << 0;
+    /// Destination NAT (DNAT)
+    pub const DST: u16 = 1 << 1;
+    /// Persistent mapping (survives restarts)
+    pub const PERSISTENT: u16 = 1 << 2;
+    /// Use hash-based port selection
+    pub const PROTO_HASH: u16 = 1 << 3;
+    /// Use random port selection
+    pub const PROTO_RANDOM: u16 = 1 << 4;
+}
+
+/// NAT range present flags (which optional fields are included).
+#[allow(dead_code)]
+pub mod nat_range {
+    /// IPv4 minimum address present
+    pub const IPV4_MIN: u16 = 1 << 0;
+    /// IPv4 maximum address present
+    pub const IPV4_MAX: u16 = 1 << 1;
+    /// IPv6 minimum address present
+    pub const IPV6_MIN: u16 = 1 << 2;
+    /// IPv6 maximum address present
+    pub const IPV6_MAX: u16 = 1 << 3;
+    /// Minimum port present
+    pub const PROTO_MIN: u16 = 1 << 4;
+    /// Maximum port present
+    pub const PROTO_MAX: u16 = 1 << 5;
 }
 
 /// Reserved OpenFlow port numbers.
