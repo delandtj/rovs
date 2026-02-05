@@ -21,4 +21,5 @@ serde_json = { workspace = true, features = ["preserve_order"] }
 workspace = true
 
 [dev-dependencies]
+clap = { version = "4.5.57", features = ["derive"] }
 tracing-subscriber = { workspace = true, features = ["env-filter"] }

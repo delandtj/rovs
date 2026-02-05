@@ -1,11 +1,11 @@
-//! Debug test for ct_state matching
+//! Debug test for `ct_state` matching
 //!
-//! Key finding: When using ct() action with commit flag, OVS requires
-//! eth_type to be specified in the match. This is because connection
+//! Key finding: When using `ct()` action with commit flag, OVS requires
+//! `eth_type` to be specified in the match. This is because connection
 //! tracking operates at the network layer (IP).
 //!
-//! Without eth_type: BadAction error code 10 (OFPBAC_MATCH_INCONSISTENT)
-//! With eth_type: Success
+//! Without `eth_type`: `BadAction` error code 10 (`OFPBAC_MATCH_INCONSISTENT`)
+//! With `eth_type`: Success
 
 use rovs_openflow::oxm::ct_state;
 use rovs_openflow::{ActionList, Flow, Match, VConn, CT_COMMIT};
@@ -36,7 +36,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .actions(ActionList::new().ct(CT_COMMIT, 1, Some(2)));
 
     match conn.send_flow_sync(&flow_no_ethtype).await {
-        Ok(_) => println!("  OK (unexpected!)"),
+        Ok(()) => println!("  OK (unexpected!)"),
         Err(e) => println!("  Expected error: BadAction code 10 (MATCH_INCONSISTENT)\n  Got: {e:?}"),
     }
 
@@ -54,7 +54,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .actions(ActionList::new().ct(CT_COMMIT, 1, Some(2)));
 
     match conn.send_flow_sync(&flow_with_ethtype).await {
-        Ok(_) => println!("  OK!"),
+        Ok(()) => println!("  OK!"),
         Err(e) => println!("  Error (unexpected): {e:?}"),
     }
 
@@ -72,7 +72,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .actions(ActionList::new().ct(CT_COMMIT, 1, Some(2)));
 
     match conn.send_flow_sync(&flow_ipv6).await {
-        Ok(_) => println!("  OK!"),
+        Ok(()) => println!("  OK!"),
         Err(e) => println!("  Error (unexpected): {e:?}"),
     }
 

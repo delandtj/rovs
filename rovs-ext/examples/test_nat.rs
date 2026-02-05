@@ -1,11 +1,13 @@
 //! Test NAT action encoding
 //!
-//! Tests the ct() action with NAT (SNAT/DNAT) nested action.
+//! Tests the `ct()` action with NAT (SNAT/DNAT) nested action.
 //!
 //! Run with:
 //! ```sh
 //! OPENFLOW_ADDR=tcp:127.0.0.1:6653 cargo run -p rovs-ext --example test_nat
 //! ```
+
+#![allow(clippy::similar_names)]
 
 use std::net::Ipv4Addr;
 
@@ -33,7 +35,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .actions(ActionList::new().ct_snat(1, Some(11), Ipv4Addr::new(10, 0, 0, 1)));
 
     match conn.send_flow_sync(&flow1).await {
-        Ok(_) => println!("  OK!"),
+        Ok(()) => println!("  OK!"),
         Err(e) => println!("  Error: {e:?}"),
     }
 
@@ -46,7 +48,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .actions(ActionList::new().ct_dnat(1, Some(11), Ipv4Addr::new(192, 168, 1, 100)));
 
     match conn.send_flow_sync(&flow2).await {
-        Ok(_) => println!("  OK!"),
+        Ok(()) => println!("  OK!"),
         Err(e) => println!("  Error: {e:?}"),
     }
 
@@ -63,7 +65,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .actions(ActionList::new().ct_nat(CT_COMMIT, 1, Some(11), nat_config));
 
     match conn.send_flow_sync(&flow3).await {
-        Ok(_) => println!("  OK!"),
+        Ok(()) => println!("  OK!"),
         Err(e) => println!("  Error: {e:?}"),
     }
 
@@ -79,7 +81,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .actions(ActionList::new().ct_nat(CT_COMMIT, 1, Some(11), nat_config));
 
     match conn.send_flow_sync(&flow4).await {
-        Ok(_) => println!("  OK!"),
+        Ok(()) => println!("  OK!"),
         Err(e) => println!("  Error: {e:?}"),
     }
 
@@ -93,7 +95,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .actions(ActionList::new().ct_nat(CT_COMMIT, 1, Some(11), nat_config));
 
     match conn.send_flow_sync(&flow5).await {
-        Ok(_) => println!("  OK!"),
+        Ok(()) => println!("  OK!"),
         Err(e) => println!("  Error: {e:?}"),
     }
 

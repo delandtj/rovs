@@ -10,9 +10,9 @@
 //! - Table 1: Match on `ct_state` to allow/deny traffic
 //! - Table 2: Output flows after ct(commit) recirculation
 //!
-//! Note: When matching ct_state AND committing, you must use ct(commit, zone, Some(table))
-//! which recirculates to another table for output. Using ct_commit(zone).output(port)
-//! directly doesn't work with ct_state matching.
+//! Note: When matching `ct_state` AND committing, you must use `ct(commit, zone, Some(table))`
+//! which recirculates to another table for output. Using `ct_commit(zone).output(port)`
+//! directly doesn't work with `ct_state` matching.
 //! Run with:
 //! ```sh
 //! # Start OVS container with OpenFlow support:
@@ -21,6 +21,10 @@
 //! # Run the example:
 //! OPENFLOW_ADDR=tcp:127.0.0.1:6653 cargo run -p rovs-ext --example stateful_firewall
 //! ```
+
+// Examples are intentionally verbose for educational purposes
+#![allow(clippy::too_many_lines)]
+#![allow(clippy::items_after_statements)]
 
 use rovs_openflow::oxm::ct_state;
 use rovs_openflow::{ActionList, Flow, Match, VConn, CT_COMMIT};
