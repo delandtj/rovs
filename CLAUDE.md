@@ -62,6 +62,8 @@ rovs-jsonrpc    → JSON-RPC 1.0 (brace-depth parsing, no newlines)
 rovs-ovsdb      → OVSDB client, IDL, transactions
        ↓
 rovs-client     → High-level API and examples
+       ↓
+rovs-ext        → Higher-level abstractions (controller framework, flow templates, topology builders)
 
 rovs-types      → Shared types (Atom, MacAddr)
 rovs-openflow   → OpenFlow 1.3 + Nicira extensions (VConn, flows, controller)
@@ -207,3 +209,58 @@ Set `OVSDB_ADDR=unix:/tmp/ovs-test/db.sock` for examples.
 - OXM (OpenFlow Extensible Match) field format: class(2) + field(7) + hasmask(1) + length(1) + value
 - Packet-In reasons: NoMatch (table miss), Action (output to controller), InvalidTtl
 - Linux interface names limited to 15 characters (IFNAMSIZ - 1)
+
+## rovs-ext Crate
+
+The `rovs-ext` crate provides higher-level abstractions for OVS automation:
+
+### Flow Templates
+Pre-built flow patterns for common scenarios:
+```rust
+use rovs_ext::flows::{MacNatFlows, MacNatConfig};
+
+let flows = MacNatFlows::new(MacNatConfig::new(
+    [0x02, 0x00, 0x00, 0x00, 0x00, 0x01],  // internal MAC
+    [0x02, 0x00, 0x00, 0x00, 0x00, 0x99],  // external MAC
+    1, 2,  // internal/external ports
+));
+flows.install(&mut conn, 0, 100).await?;
+```
+
+Available templates:
+- `MacNatFlows` - MAC address translation between ports
+- `ArpProxyFlows` - ARP proxy using Nicira extensions
+- `NdpProxyFlows` - NDP proxy (requires controller handler)
+- `LearningSwitchFlows` - MAC learning switch with NxLearn
+- VLAN helpers: `push_vlan_flow`, `pop_vlan_flow`, `VlanAccessPort`
+
+### Topology Builders
+Create complex topologies with OVSDB transactions:
+```rust
+use rovs_ext::topology::BridgePair;
+
+let pair = BridgePair::new("br-int", "br-ext")
+    .vlans(vec![100, 200]);
+pair.create(&mut client).await?;
+```
+
+- `BridgePair` - Two bridges connected by patch ports
+- `VlanTrunk` - Bridge with VLAN access and trunk ports
+
+### Controller Framework
+Event-driven packet processing:
+```rust
+use rovs_ext::controller::{Controller, ControllerConfig};
+use rovs_ext::controller::protocol::ArpProxyHandler;
+
+let mut controller = Controller::new(&addr, ControllerConfig::default()).await?;
+let mut arp_handler = ArpProxyHandler::new();
+arp_handler.add_entry([10, 0, 0, 99], [0x02, 0x00, 0x00, 0x00, 0x00, 0x99]);
+controller.register(arp_handler);
+controller.run().await?;
+```
+
+- `Controller` - Main event loop with VConn
+- `PacketHandler` trait - Implement for custom packet handling
+- `ArpProxyHandler` - Pre-built ARP proxy
+- `NdpProxyHandler` - Pre-built NDP proxy

@@ -7,6 +7,7 @@ members = [
     "rovs-ovsdb",
     "rovs-openflow",
     "rovs-client",
+    "rovs-ext",
 ]
 
 [workspace.package]
@@ -24,6 +25,7 @@ rovs-jsonrpc = { path = "rovs-jsonrpc" }
 rovs-ovsdb = { path = "rovs-ovsdb" }
 rovs-openflow = { path = "rovs-openflow" }
 rovs-client = { path = "rovs-client" }
+rovs-ext = { path = "rovs-ext" }
 
 # Async runtime
 tokio = { version = "1", features = ["full"] }

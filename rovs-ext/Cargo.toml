@@ -1,6 +1,6 @@
 [package]
-name = "rovs-openflow"
-description = "OpenFlow protocol implementation for OVS"
+name = "rovs-ext"
+description = "High-level OVS automation extensions"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -8,16 +8,14 @@ repository.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+rovs-types = { workspace = true }
 rovs-transport = { workspace = true }
-
+rovs-ovsdb = { workspace = true }
+rovs-openflow = { workspace = true }
 tokio = { workspace = true }
-bytes = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
-nom = { workspace = true }
-
-[features]
-test-support = []
+serde_json = { workspace = true, features = ["preserve_order"] }
 
 [lints]
 workspace = true

@@ -136,8 +136,36 @@ impl PacketIn {
     }
 
     /// Get the input port from the match fields.
-    pub fn in_port(&self) -> Option<u32> {
-        self.match_fields.in_port
+    pub fn in_port(&self) -> u32 {
+        self.match_fields.in_port.unwrap_or(0)
+    }
+
+    /// Get the buffer ID, or None if not buffered.
+    pub fn buffer_id(&self) -> Option<u32> {
+        if self.buffer_id == OFP_NO_BUFFER {
+            None
+        } else {
+            Some(self.buffer_id)
+        }
+    }
+
+    /// Get the packet data.
+    pub fn data(&self) -> &[u8] {
+        &self.data
+    }
+
+    /// Create a PacketIn for testing.
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn new_for_test(buffer_id: u32, in_port: u32, data: Vec<u8>) -> Self {
+        Self {
+            buffer_id,
+            total_len: data.len() as u16,
+            reason: PacketInReason::Action,
+            table_id: 0,
+            cookie: 0,
+            match_fields: Match::new().in_port(in_port),
+            data,
+        }
     }
 }
 
