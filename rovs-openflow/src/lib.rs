@@ -26,7 +26,7 @@ mod match_fields;
 mod message;
 mod multipart;
 pub mod ndp;
-mod oxm;
+pub mod oxm;
 mod packet_in;
 mod packet_out;
 mod vconn;

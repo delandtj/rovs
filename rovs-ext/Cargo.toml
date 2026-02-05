@@ -19,3 +19,6 @@ serde_json = { workspace = true, features = ["preserve_order"] }
 
 [lints]
 workspace = true
+
+[dev-dependencies]
+tracing-subscriber = { workspace = true, features = ["env-filter"] }

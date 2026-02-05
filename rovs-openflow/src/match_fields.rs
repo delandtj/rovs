@@ -117,6 +117,18 @@ pub struct Match {
     // Tunnel
     /// Tunnel ID
     pub tunnel_id: Option<u64>,
+
+    // Connection tracking (Nicira extensions)
+    /// Connection tracking state (use ct_state:: constants)
+    pub ct_state: Option<u32>,
+    /// Connection tracking state mask
+    pub ct_state_mask: Option<u32>,
+    /// Connection tracking zone
+    pub ct_zone: Option<u16>,
+    /// Connection tracking mark
+    pub ct_mark: Option<u32>,
+    /// Connection tracking mark mask
+    pub ct_mark_mask: Option<u32>,
 }
 
 impl Match {
@@ -208,6 +220,74 @@ impl Match {
     /// Match on tunnel ID.
     pub fn tunnel_id(mut self, id: u64) -> Self {
         self.tunnel_id = Some(id);
+        self
+    }
+
+    /// Match on connection tracking state (Nicira extension).
+    ///
+    /// Use constants from `oxm::ct_state` module, e.g.:
+    /// - `ct_state::TRK` - packet has been tracked
+    /// - `ct_state::NEW` - new connection
+    /// - `ct_state::EST` - established connection
+    /// - `ct_state::REL` - related connection
+    /// - `ct_state::INV` - invalid connection
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// use rovs_openflow::oxm::ct_state;
+    ///
+    /// // Match established connections
+    /// Match::new().ct_state(ct_state::TRK | ct_state::EST)
+    /// ```
+    pub fn ct_state(mut self, state: u32) -> Self {
+        self.ct_state = Some(state);
+        self.ct_state_mask = Some(state); // Default mask = match all set bits
+        self
+    }
+
+    /// Match on connection tracking state with explicit mask.
+    ///
+    /// The mask specifies which bits of the state to match.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// use rovs_openflow::oxm::ct_state;
+    ///
+    /// // Match tracked + new, ignoring other flags
+    /// Match::new().ct_state_masked(
+    ///     ct_state::TRK | ct_state::NEW,
+    ///     ct_state::TRK | ct_state::NEW
+    /// )
+    /// ```
+    pub fn ct_state_masked(mut self, state: u32, mask: u32) -> Self {
+        self.ct_state = Some(state);
+        self.ct_state_mask = Some(mask);
+        self
+    }
+
+    /// Match on connection tracking zone (Nicira extension).
+    ///
+    /// Zones allow multiple independent connection tracking tables.
+    pub fn ct_zone(mut self, zone: u16) -> Self {
+        self.ct_zone = Some(zone);
+        self
+    }
+
+    /// Match on connection tracking mark (Nicira extension).
+    ///
+    /// The ct_mark is a 32-bit value that can be set by the ct action
+    /// and matched on later.
+    pub fn ct_mark(mut self, mark: u32) -> Self {
+        self.ct_mark = Some(mark);
+        self
+    }
+
+    /// Match on connection tracking mark with mask (Nicira extension).
+    pub fn ct_mark_masked(mut self, mark: u32, mask: u32) -> Self {
+        self.ct_mark = Some(mark);
+        self.ct_mark_mask = Some(mask);
         self
     }
 
@@ -310,6 +390,9 @@ impl Match {
             && self.arp_tpa.is_none()
             && self.arp_sha.is_none()
             && self.arp_tha.is_none()
+            && self.ct_state.is_none()
+            && self.ct_zone.is_none()
+            && self.ct_mark.is_none()
     }
 
     /// Decode OXM fields from raw bytes (without match header).
@@ -658,18 +741,48 @@ impl Match {
     fn decode_nxm_field(
         m: &mut Match,
         field: u8,
-        _has_mask: bool,
+        has_mask: bool,
         value: &[u8],
         value_len: usize,
     ) {
-        // NXM1 field 16 is TUN_ID
-        if field == 16 && value_len >= 8 {
-            m.tunnel_id = Some(u64::from_be_bytes([
-                value[0], value[1], value[2], value[3],
-                value[4], value[5], value[6], value[7],
-            ]));
+        match field {
+            // NXM1 field 16 is TUN_ID
+            16 if value_len >= 8 => {
+                m.tunnel_id = Some(u64::from_be_bytes([
+                    value[0], value[1], value[2], value[3],
+                    value[4], value[5], value[6], value[7],
+                ]));
+            }
+            // CT_STATE = 105
+            105 if value_len >= 4 => {
+                m.ct_state = Some(u32::from_be_bytes([
+                    value[0], value[1], value[2], value[3],
+                ]));
+                if has_mask && value.len() >= 8 {
+                    m.ct_state_mask = Some(u32::from_be_bytes([
+                        value[4], value[5], value[6], value[7],
+                    ]));
+                }
+            }
+            // CT_ZONE = 106
+            106 if value_len >= 2 => {
+                m.ct_zone = Some(u16::from_be_bytes([value[0], value[1]]));
+            }
+            // CT_MARK = 107
+            107 if value_len >= 4 => {
+                m.ct_mark = Some(u32::from_be_bytes([
+                    value[0], value[1], value[2], value[3],
+                ]));
+                if has_mask && value.len() >= 8 {
+                    m.ct_mark_mask = Some(u32::from_be_bytes([
+                        value[4], value[5], value[6], value[7],
+                    ]));
+                }
+            }
+            _ => {
+                // Unknown NXM field, skip
+            }
         }
-        // Other NXM fields are not yet supported
     }
 
     /// Encode the match to OpenFlow wire format (OXM).
@@ -997,6 +1110,29 @@ impl Match {
             oxm_fields.extend(oxm::encode_tun_id(tun_id));
         }
 
+        // Connection tracking (NXM fields)
+        if let Some(state) = self.ct_state {
+            if let Some(mask) = self.ct_state_mask {
+                if mask != 0xffff_ffff {
+                    oxm_fields.extend(oxm::encode_ct_state_masked(state, mask));
+                } else {
+                    oxm_fields.extend(oxm::encode_ct_state(state));
+                }
+            } else {
+                oxm_fields.extend(oxm::encode_ct_state(state));
+            }
+        }
+        if let Some(zone) = self.ct_zone {
+            oxm_fields.extend(oxm::encode_ct_zone(zone));
+        }
+        if let Some(mark) = self.ct_mark {
+            if let Some(mask) = self.ct_mark_mask {
+                oxm_fields.extend(oxm::encode_ct_mark_masked(mark, mask));
+            } else {
+                oxm_fields.extend(oxm::encode_ct_mark(mark));
+            }
+        }
+
         // Build match structure
         // Match header: type (2) + length (2) + OXM fields + padding
         // Length includes header (4 bytes) + OXM fields length
@@ -1305,5 +1441,95 @@ mod tests {
         assert_eq!(mask_to_prefix_v6(u128::MAX), 128);
         assert_eq!(mask_to_prefix_v6(u128::MAX << 64), 64);
         assert_eq!(mask_to_prefix_v6(0), 0);
+    }
+
+    // Connection tracking tests
+
+    #[test]
+    fn encode_ct_state() {
+        use crate::oxm::ct_state;
+        let m = Match::new().ct_state(ct_state::TRK | ct_state::EST);
+        let bytes = m.encode();
+        // Should have match header + ct_state OXM
+        assert!(bytes.len() >= 8);
+        // Verify it's 8-byte aligned
+        assert_eq!(bytes.len() % 8, 0);
+    }
+
+    #[test]
+    fn encode_ct_state_masked() {
+        use crate::oxm::ct_state;
+        let m = Match::new().ct_state_masked(
+            ct_state::TRK | ct_state::NEW,
+            ct_state::TRK | ct_state::NEW,
+        );
+        let bytes = m.encode();
+        assert!(bytes.len() >= 8);
+        assert_eq!(bytes.len() % 8, 0);
+    }
+
+    #[test]
+    fn encode_ct_zone() {
+        let m = Match::new().ct_zone(100);
+        let bytes = m.encode();
+        assert!(bytes.len() >= 8);
+        assert_eq!(bytes.len() % 8, 0);
+    }
+
+    #[test]
+    fn encode_ct_mark() {
+        let m = Match::new().ct_mark(0xaabbccdd);
+        let bytes = m.encode();
+        assert!(bytes.len() >= 8);
+        assert_eq!(bytes.len() % 8, 0);
+    }
+
+    #[test]
+    fn encode_ct_mark_masked() {
+        let m = Match::new().ct_mark_masked(0xff000000, 0xff000000);
+        let bytes = m.encode();
+        assert!(bytes.len() >= 8);
+        assert_eq!(bytes.len() % 8, 0);
+    }
+
+    #[test]
+    fn roundtrip_ct_state() {
+        use crate::oxm::ct_state;
+        let state = ct_state::TRK | ct_state::EST;
+        let original = Match::new().ct_state(state);
+        let encoded = original.encode();
+        let (decoded, _) = Match::decode(&encoded).unwrap();
+        assert_eq!(decoded.ct_state, Some(state));
+    }
+
+    #[test]
+    fn roundtrip_ct_zone() {
+        let original = Match::new().ct_zone(42);
+        let encoded = original.encode();
+        let (decoded, _) = Match::decode(&encoded).unwrap();
+        assert_eq!(decoded.ct_zone, Some(42));
+    }
+
+    #[test]
+    fn roundtrip_ct_mark() {
+        let original = Match::new().ct_mark(0x12345678);
+        let encoded = original.encode();
+        let (decoded, _) = Match::decode(&encoded).unwrap();
+        assert_eq!(decoded.ct_mark, Some(0x12345678));
+    }
+
+    #[test]
+    fn stateful_firewall_match() {
+        use crate::oxm::ct_state;
+        // Test a typical stateful firewall match pattern
+        let m = Match::new()
+            .eth_type(0x0800)
+            .ct_state(ct_state::TRK | ct_state::EST);
+
+        let bytes = m.encode();
+        let (decoded, _) = Match::decode(&bytes).unwrap();
+
+        assert_eq!(decoded.eth_type, Some(0x0800));
+        assert_eq!(decoded.ct_state, Some(ct_state::TRK | ct_state::EST));
     }
 }
