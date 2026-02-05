@@ -151,6 +151,32 @@ impl NatConfig {
         }
     }
 
+    /// Create a SNAT configuration with an IPv6 address range.
+    pub fn snat_v6_range(min: Ipv6Addr, max: Ipv6Addr) -> Self {
+        Self {
+            flags: nat_flags::SRC,
+            ipv4_min: None,
+            ipv4_max: None,
+            ipv6_min: Some(min),
+            ipv6_max: Some(max),
+            port_min: None,
+            port_max: None,
+        }
+    }
+
+    /// Create a DNAT configuration with an IPv6 address range.
+    pub fn dnat_v6_range(min: Ipv6Addr, max: Ipv6Addr) -> Self {
+        Self {
+            flags: nat_flags::DST,
+            ipv4_min: None,
+            ipv4_max: None,
+            ipv6_min: Some(min),
+            ipv6_max: Some(max),
+            port_min: None,
+            port_max: None,
+        }
+    }
+
     /// Set a single port for NAT.
     pub fn port(mut self, port: u16) -> Self {
         self.port_min = Some(port);

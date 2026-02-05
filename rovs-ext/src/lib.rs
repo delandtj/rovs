@@ -174,7 +174,7 @@ pub use error::{Error, Result};
 // Re-export commonly used types from flows
 pub use flows::{
     ArpProxyBuilder, ArpProxyConfig, ArpProxyFlows,
-    DnatConfig, DnatRule, DnatService,
+    DnatConfig, DnatRule, DnatService, DnatTarget,
     LearningConfig, LearningSwitchFlows,
     MacNatConfig, MacNatFlows,
     NdpProxyBuilder, NdpProxyConfig, NdpProxyFlows,

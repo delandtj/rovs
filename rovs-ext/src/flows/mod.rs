@@ -20,7 +20,7 @@ mod vlan;
 pub use arp_proxy::{ArpProxyBuilder, ArpProxyConfig, ArpProxyFlows};
 pub use learning::{LearningConfig, LearningSwitchFlows};
 pub use mac_nat::{MacNatConfig, MacNatFlows};
-pub use nat::{DnatConfig, DnatRule, DnatService, SnatConfig, SnatGateway};
+pub use nat::{DnatConfig, DnatRule, DnatService, DnatTarget, SnatConfig, SnatGateway};
 pub use ndp_proxy::{NdpProxyBuilder, NdpProxyConfig, NdpProxyFlows};
 pub use vlan::{
     forward_vlan_flow, pop_vlan_flow, push_vlan_flow, translate_vlan_flow, VlanAccessPort,
