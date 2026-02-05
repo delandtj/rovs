@@ -61,29 +61,7 @@ sudo ovs-ofctl dump-flows br-nat
 
 ## Examples
 
-### rovs-client examples
-
-| Example | Description |
-|---------|-------------|
-| `ovsdb_transaction` | Basic bridge/port creation and patch ports |
-| `ovsdb_monitor` | Real-time database monitoring |
-| `list_bridges` | High-level client API usage |
-| `add_flow` | OpenFlow flow programming |
-| `dual_bridge_vlan` | VLAN routing between two bridges |
-| `mac_learning` | MAC learning with NxLearn action |
-| `mac_translation` | MAC NAT with Nicira extensions |
-| `vlan_mac_nat` | VLAN bridge with MAC NAT for IPv4/IPv6 |
-| `ndp_controller` | OpenFlow controller for NDP proxy |
-
-### rovs-ext examples
-
-| Example | Description |
-|---------|-------------|
-| `nat_gateway` | SNAT/DNAT with high-level API |
-| `install_nat_flows` | Dual-stack NAT for inspection |
-| `test_nat` | NAT action encoding tests |
-| `test_ct` | Connection tracking tests |
-| `stateful_firewall` | Stateful firewall with ct |
+See [`rovs-ext/examples/README.md`](../rovs-ext/examples/README.md) for the complete list of examples.
 
 Run examples:
 ```bash
