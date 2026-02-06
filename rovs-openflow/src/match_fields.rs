@@ -183,6 +183,22 @@ impl Match {
         self
     }
 
+    /// Match on IPv6 source address with prefix length.
+    pub fn ipv6_src(mut self, addr: Ipv6Addr, prefix_len: u8) -> Self {
+        self.eth_type = Some(0x86dd); // IPv6
+        self.ipv6_src = Some(addr);
+        self.ipv6_src_mask = Some(prefix_len);
+        self
+    }
+
+    /// Match on IPv6 destination address with prefix length.
+    pub fn ipv6_dst(mut self, addr: Ipv6Addr, prefix_len: u8) -> Self {
+        self.eth_type = Some(0x86dd); // IPv6
+        self.ipv6_dst = Some(addr);
+        self.ipv6_dst_mask = Some(prefix_len);
+        self
+    }
+
     /// Match on IP protocol.
     pub fn ip_proto(mut self, proto: u8) -> Self {
         self.ip_proto = Some(proto);
