@@ -40,7 +40,7 @@ impl TryFrom<u8> for PacketInReason {
             3 => Ok(Self::ActionSet),
             4 => Ok(Self::Group),
             5 => Ok(Self::PacketOut),
-            _ => Err(Error::Parse(format!("unknown packet-in reason: {}", v))),
+            _ => Err(Error::Parse(format!("unknown packet-in reason: {v}"))),
         }
     }
 }
@@ -87,8 +87,7 @@ impl PacketIn {
         if match_type != 1 {
             // OFPMT_OXM = 1
             return Err(Error::Parse(format!(
-                "unsupported match type: {}",
-                match_type
+                "unsupported match type: {match_type}",
             )));
         }
 

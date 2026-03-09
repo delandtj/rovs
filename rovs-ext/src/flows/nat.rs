@@ -220,6 +220,7 @@ impl SnatGateway {
     }
 
     /// Generate all flows for the SNAT gateway.
+    #[allow(clippy::too_many_lines)]
     pub fn all_flows(&self, base_table: u8, priority: u16) -> Vec<Flow> {
         let mut flows = Vec::new();
         let ct_table = base_table;
@@ -551,6 +552,7 @@ impl DnatService {
     }
 
     /// Generate all flows for the DNAT service.
+    #[allow(clippy::too_many_lines)]
     pub fn all_flows(&self, base_table: u8, priority: u16) -> Vec<Flow> {
         let mut flows = Vec::new();
         let ct_table = base_table;

@@ -865,7 +865,7 @@ impl Transaction {
     ///
     /// * `bridge_name` - Name of the bridge to configure
     /// * `target` - Controller target (e.g., "ptcp:6653:127.0.0.1" for passive TCP,
-    ///              "tcp:127.0.0.1:6653" for active connection to a controller)
+    ///   "tcp:127.0.0.1:6653" for active connection to a controller)
     ///
     /// # Example
     ///

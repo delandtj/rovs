@@ -325,6 +325,7 @@ pub fn icmpv6_checksum(src: &Ipv6Addr, dst: &Ipv6Addr, icmpv6_data: &[u8]) -> u1
 ///
 /// Given a parsed Neighbor Solicitation and the MAC/IPv6 to advertise,
 /// constructs a complete Ethernet + IPv6 + ICMPv6 NA packet.
+#[allow(clippy::missing_panics_doc)]
 pub fn build_na_reply(
     ns_eth: &EthernetFrame,
     ns_ipv6: &Ipv6Header,

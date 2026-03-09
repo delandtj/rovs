@@ -3,6 +3,8 @@
 //! Instructions are the top-level processing directives in OpenFlow 1.1+.
 //! They wrap actions and control table pipeline behavior.
 
+use std::fmt;
+
 use crate::action::ActionList;
 
 /// OpenFlow instruction type wire values (OF 1.3+).
@@ -62,6 +64,42 @@ pub enum Instruction {
 
     /// Apply a meter to the packet.
     Meter(u32),
+}
+
+impl fmt::Display for Instruction {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::GotoTable(table) => write!(f, "goto_table:{table}"),
+            Self::WriteMetadata { metadata, mask } => {
+                write!(f, "write_metadata:0x{metadata:x}/0x{mask:x}")
+            }
+            Self::ApplyActions(actions) => write!(f, "apply_actions({actions})"),
+            Self::WriteActions(actions) => write!(f, "write_actions({actions})"),
+            Self::ClearActions => write!(f, "clear_actions"),
+            Self::Meter(id) => write!(f, "meter:{id}"),
+        }
+    }
+}
+
+impl fmt::Display for InstructionList {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // Common case: a single ApplyActions instruction unwraps to just the actions
+        if self.instructions.len() == 1 {
+            if let Instruction::ApplyActions(actions) = &self.instructions[0] {
+                return write!(f, "{actions}");
+            }
+        }
+        if self.instructions.is_empty() {
+            return write!(f, "drop");
+        }
+        for (i, inst) in self.instructions.iter().enumerate() {
+            if i > 0 {
+                write!(f, ",")?;
+            }
+            write!(f, "{inst}")?;
+        }
+        Ok(())
+    }
 }
 
 impl Instruction {

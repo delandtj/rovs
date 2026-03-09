@@ -12,6 +12,8 @@ mod tests;
 
 use std::net::{Ipv4Addr, Ipv6Addr};
 
+use std::fmt;
+
 use crate::match_fields::MacAddr;
 use crate::oxm::{OxmClass, OxmField};
 
@@ -754,6 +756,159 @@ impl OutputPort {
             port::NONE => Self::None,
             p => Self::Port(p),
         }
+    }
+}
+
+/// Format a MAC address as `aa:bb:cc:dd:ee:ff`.
+fn format_mac(mac: MacAddr) -> String {
+    format!(
+        "{:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}",
+        mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]
+    )
+}
+
+impl fmt::Display for OutputPort {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Port(p) => write!(f, "{p}"),
+            Self::Controller => write!(f, "CONTROLLER"),
+            Self::Flood => write!(f, "FLOOD"),
+            Self::All => write!(f, "ALL"),
+            Self::InPort => write!(f, "IN_PORT"),
+            Self::Local => write!(f, "LOCAL"),
+            Self::Normal => write!(f, "NORMAL"),
+            Self::None => write!(f, "NONE"),
+        }
+    }
+}
+
+impl fmt::Display for NatConfig {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "nat(")?;
+        if self.flags & nat_flags::SRC != 0 {
+            write!(f, "src")?;
+        } else if self.flags & nat_flags::DST != 0 {
+            write!(f, "dst")?;
+        }
+        if let Some(ip) = self.ipv4_min {
+            write!(f, "={ip}")?;
+            if let Some(max) = self.ipv4_max {
+                write!(f, "-{max}")?;
+            }
+        } else if let Some(ip) = self.ipv6_min {
+            write!(f, "={ip}")?;
+            if let Some(max) = self.ipv6_max {
+                write!(f, "-{max}")?;
+            }
+        }
+        if let Some(port) = self.port_min {
+            write!(f, ":{port}")?;
+            if let Some(max) = self.port_max {
+                write!(f, "-{max}")?;
+            }
+        }
+        write!(f, ")")
+    }
+}
+
+impl fmt::Display for Action {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Output(OutputPort::Normal) => write!(f, "NORMAL"),
+            Self::Output(OutputPort::Flood) => write!(f, "FLOOD"),
+            Self::Output(OutputPort::All) => write!(f, "ALL"),
+            Self::Output(OutputPort::InPort) => write!(f, "IN_PORT"),
+            Self::Output(OutputPort::Local) => write!(f, "LOCAL"),
+            Self::Output(port) => write!(f, "output:{port}"),
+            Self::Drop => write!(f, "drop"),
+            Self::Controller { max_len } => write!(f, "CONTROLLER:{max_len}"),
+            Self::SetEthSrc(mac) => write!(f, "set_eth_src:{}", format_mac(*mac)),
+            Self::SetEthDst(mac) => write!(f, "set_eth_dst:{}", format_mac(*mac)),
+            Self::SetVlanVid(vid) => write!(f, "set_vlan_vid:{vid}"),
+            Self::PushVlan(ethertype) => write!(f, "push_vlan:0x{ethertype:04x}"),
+            Self::PopVlan => write!(f, "pop_vlan"),
+            Self::SetIpv4Src(ip) => write!(f, "set_ipv4_src:{ip}"),
+            Self::SetIpv4Dst(ip) => write!(f, "set_ipv4_dst:{ip}"),
+            Self::SetTpSrc(port) => write!(f, "set_tp_src:{port}"),
+            Self::SetTpDst(port) => write!(f, "set_tp_dst:{port}"),
+            Self::SetTtl(ttl) => write!(f, "set_ttl:{ttl}"),
+            Self::DecTtl => write!(f, "dec_ttl"),
+            Self::GotoTable(table) => write!(f, "goto_table:{table}"),
+            Self::WriteMetadata { metadata, mask } => {
+                write!(f, "write_metadata:0x{metadata:x}/0x{mask:x}")
+            }
+            Self::Meter(id) => write!(f, "meter:{id}"),
+            Self::Group(id) => write!(f, "group:{id}"),
+            Self::SetTunnelId(id) => write!(f, "set_tunnel:{id:#x}"),
+            Self::NxResubmit { port, table } => {
+                let port_str = port.map_or(String::new(), |p| p.to_string());
+                let table_str = table.map_or(String::new(), |t| t.to_string());
+                write!(f, "resubmit({port_str},{table_str})")
+            }
+            Self::NxLearn(learn) => {
+                write!(f, "learn(table={}", learn.table_id)?;
+                if learn.idle_timeout > 0 {
+                    write!(f, ",idle_timeout={}", learn.idle_timeout)?;
+                }
+                if learn.hard_timeout > 0 {
+                    write!(f, ",hard_timeout={}", learn.hard_timeout)?;
+                }
+                if learn.priority > 0 {
+                    write!(f, ",priority={}", learn.priority)?;
+                }
+                write!(f, ")")
+            }
+            Self::NxCt { flags, zone, table } => {
+                write!(f, "ct(")?;
+                let mut parts = Vec::new();
+                if *flags & types::ct_flags::COMMIT != 0 {
+                    parts.push("commit".to_string());
+                }
+                if *zone != 0 {
+                    parts.push(format!("zone={zone}"));
+                }
+                if let Some(t) = table {
+                    parts.push(format!("table={t}"));
+                }
+                write!(f, "{})", parts.join(","))
+            }
+            Self::NxCtNat { flags, zone, table, nat } => {
+                write!(f, "ct(")?;
+                let mut parts = Vec::new();
+                if *flags & types::ct_flags::COMMIT != 0 {
+                    parts.push("commit".to_string());
+                }
+                if *zone != 0 {
+                    parts.push(format!("zone={zone}"));
+                }
+                if let Some(t) = table {
+                    parts.push(format!("table={t}"));
+                }
+                parts.push(nat.to_string());
+                write!(f, "{})", parts.join(","))
+            }
+            Self::NxMove { src_field, dst_field, n_bits, src_ofs, dst_ofs } => {
+                write!(f, "move:NXM({src_field:#x})[{src_ofs}..{n_bits}]->NXM({dst_field:#x})[{dst_ofs}..{n_bits}]")
+            }
+            Self::NxRegLoad { dst_field, dst_ofs, n_bits, value } => {
+                write!(f, "load:{value:#x}->NXM({dst_field:#x})[{dst_ofs}..{}]", dst_ofs + n_bits)
+            }
+        }
+    }
+}
+
+impl fmt::Display for ActionList {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if self.actions.is_empty() {
+            return write!(f, "drop");
+        }
+        for (i, action) in self.actions.iter().enumerate() {
+            if i > 0 {
+                write!(f, ",")?;
+            }
+            write!(f, "{action}")?;
+        }
+        Ok(())
     }
 }
 

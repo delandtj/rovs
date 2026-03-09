@@ -480,7 +480,7 @@ pub fn encode_u64_masked_field(field: OxmField, value: u64, mask: u64) -> Vec<u8
 ///
 /// Returns 8 bytes: 4-byte header + 4-byte value.
 /// All registers use class `Nxm1` (0x0001).
-#[allow(dead_code)]
+#[allow(dead_code, clippy::missing_panics_doc)]
 #[must_use]
 pub fn encode_reg(reg_num: u8, value: u32) -> Vec<u8> {
     assert!(reg_num <= 15, "Register number must be 0-15");
@@ -490,7 +490,7 @@ pub fn encode_reg(reg_num: u8, value: u32) -> Vec<u8> {
 /// Encode a masked NXM register value.
 ///
 /// Returns 12 bytes: 4-byte header + 4-byte value + 4-byte mask.
-#[allow(dead_code)]
+#[allow(dead_code, clippy::missing_panics_doc)]
 #[must_use]
 pub fn encode_reg_masked(reg_num: u8, value: u32, mask: u32) -> Vec<u8> {
     assert!(reg_num <= 15, "Register number must be 0-15");

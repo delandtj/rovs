@@ -1,8 +1,9 @@
 //! OpenFlow match field builder.
 
+use std::fmt;
 use std::net::{Ipv4Addr, Ipv6Addr};
 
-use crate::oxm::{self, OxmClass, OxmField};
+use crate::oxm::{self, ct_state, OxmClass, OxmField};
 
 /// MAC address type.
 pub type MacAddr = [u8; 6];
@@ -301,6 +302,7 @@ impl Match {
     }
 
     /// Match on connection tracking mark with mask (Nicira extension).
+    #[allow(clippy::similar_names)]
     pub fn ct_mark_masked(mut self, mark: u32, mask: u32) -> Self {
         self.ct_mark = Some(mark);
         self.ct_mark_mask = Some(mask);
@@ -410,7 +412,214 @@ impl Match {
             && self.ct_zone.is_none()
             && self.ct_mark.is_none()
     }
+}
 
+/// Format a MAC address as `aa:bb:cc:dd:ee:ff`.
+fn format_mac(mac: MacAddr) -> String {
+    format!(
+        "{:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}",
+        mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]
+    )
+}
+
+/// Format ct_state flags using OVS `+flag` notation.
+fn format_ct_state(state: u32) -> String {
+    let mut parts = Vec::new();
+    if state & ct_state::TRK != 0 { parts.push("+trk"); }
+    if state & ct_state::NEW != 0 { parts.push("+new"); }
+    if state & ct_state::EST != 0 { parts.push("+est"); }
+    if state & ct_state::REL != 0 { parts.push("+rel"); }
+    if state & ct_state::RPL != 0 { parts.push("+rpl"); }
+    if state & ct_state::INV != 0 { parts.push("+inv"); }
+    if state & ct_state::SNAT != 0 { parts.push("+snat"); }
+    if state & ct_state::DNAT != 0 { parts.push("+dnat"); }
+    if parts.is_empty() {
+        format!("0x{state:x}")
+    } else {
+        parts.join("")
+    }
+}
+
+impl fmt::Display for Match {
+    #[allow(clippy::too_many_lines)]
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if self.is_empty() {
+            return write!(f, "*");
+        }
+
+        let mut parts: Vec<String> = Vec::new();
+
+        if let Some(p) = self.in_port {
+            parts.push(format!("in_port={p}"));
+        }
+        if let Some(p) = self.in_phy_port {
+            parts.push(format!("in_phy_port={p}"));
+        }
+        if let Some(m) = self.metadata {
+            if let Some(mask) = self.metadata_mask {
+                if mask == u64::MAX {
+                    parts.push(format!("metadata=0x{m:x}"));
+                } else {
+                    parts.push(format!("metadata=0x{m:x}/0x{mask:x}"));
+                }
+            } else {
+                parts.push(format!("metadata=0x{m:x}"));
+            }
+        }
+        if let Some(mac) = self.eth_src {
+            let s = format_mac(mac);
+            if let Some(mask) = self.eth_src_mask {
+                if mask == [0xff; 6] {
+                    parts.push(format!("eth_src={s}"));
+                } else {
+                    parts.push(format!("eth_src={s}/{}", format_mac(mask)));
+                }
+            } else {
+                parts.push(format!("eth_src={s}"));
+            }
+        }
+        if let Some(mac) = self.eth_dst {
+            let s = format_mac(mac);
+            if let Some(mask) = self.eth_dst_mask {
+                if mask == [0xff; 6] {
+                    parts.push(format!("eth_dst={s}"));
+                } else {
+                    parts.push(format!("eth_dst={s}/{}", format_mac(mask)));
+                }
+            } else {
+                parts.push(format!("eth_dst={s}"));
+            }
+        }
+        if let Some(et) = self.eth_type {
+            parts.push(format!("eth_type=0x{et:04x}"));
+        }
+        if let Some(vid) = self.vlan_vid {
+            parts.push(format!("vlan_vid={vid}"));
+        }
+        if let Some(pcp) = self.vlan_pcp {
+            parts.push(format!("vlan_pcp={pcp}"));
+        }
+        if let Some(proto) = self.ip_proto {
+            parts.push(format!("ip_proto={proto}"));
+        }
+        if let Some(dscp) = self.ip_dscp {
+            parts.push(format!("ip_dscp={dscp}"));
+        }
+        if let Some(ecn) = self.ip_ecn {
+            parts.push(format!("ip_ecn={ecn}"));
+        }
+        if let Some(ip) = self.ipv4_src {
+            let prefix = self.ipv4_src_mask.unwrap_or(32);
+            if prefix < 32 {
+                parts.push(format!("ipv4_src={ip}/{prefix}"));
+            } else {
+                parts.push(format!("ipv4_src={ip}"));
+            }
+        }
+        if let Some(ip) = self.ipv4_dst {
+            let prefix = self.ipv4_dst_mask.unwrap_or(32);
+            if prefix < 32 {
+                parts.push(format!("ipv4_dst={ip}/{prefix}"));
+            } else {
+                parts.push(format!("ipv4_dst={ip}"));
+            }
+        }
+        if let Some(ip) = self.ipv6_src {
+            let prefix = self.ipv6_src_mask.unwrap_or(128);
+            if prefix < 128 {
+                parts.push(format!("ipv6_src={ip}/{prefix}"));
+            } else {
+                parts.push(format!("ipv6_src={ip}"));
+            }
+        }
+        if let Some(ip) = self.ipv6_dst {
+            let prefix = self.ipv6_dst_mask.unwrap_or(128);
+            if prefix < 128 {
+                parts.push(format!("ipv6_dst={ip}/{prefix}"));
+            } else {
+                parts.push(format!("ipv6_dst={ip}"));
+            }
+        }
+        if let Some(fl) = self.ipv6_flabel {
+            parts.push(format!("ipv6_flabel=0x{fl:x}"));
+        }
+        if let Some(p) = self.tcp_src {
+            parts.push(format!("tcp_src={p}"));
+        }
+        if let Some(p) = self.tcp_dst {
+            parts.push(format!("tcp_dst={p}"));
+        }
+        if let Some(flags) = self.tcp_flags {
+            parts.push(format!("tcp_flags=0x{flags:x}"));
+        }
+        if let Some(p) = self.udp_src {
+            parts.push(format!("udp_src={p}"));
+        }
+        if let Some(p) = self.udp_dst {
+            parts.push(format!("udp_dst={p}"));
+        }
+        if let Some(t) = self.icmp_type {
+            parts.push(format!("icmp_type={t}"));
+        }
+        if let Some(c) = self.icmp_code {
+            parts.push(format!("icmp_code={c}"));
+        }
+        if let Some(t) = self.icmpv6_type {
+            parts.push(format!("icmpv6_type={t}"));
+        }
+        if let Some(c) = self.icmpv6_code {
+            parts.push(format!("icmpv6_code={c}"));
+        }
+        if let Some(op) = self.arp_op {
+            parts.push(format!("arp_op={op}"));
+        }
+        if let Some(ip) = self.arp_spa {
+            parts.push(format!("arp_spa={ip}"));
+        }
+        if let Some(ip) = self.arp_tpa {
+            parts.push(format!("arp_tpa={ip}"));
+        }
+        if let Some(mac) = self.arp_sha {
+            parts.push(format!("arp_sha={}", format_mac(mac)));
+        }
+        if let Some(mac) = self.arp_tha {
+            parts.push(format!("arp_tha={}", format_mac(mac)));
+        }
+        if let Some(id) = self.tunnel_id {
+            parts.push(format!("tunnel_id={id:#x}"));
+        }
+        if let Some(state) = self.ct_state {
+            let s = format_ct_state(state);
+            if let Some(mask) = self.ct_state_mask {
+                if mask == state {
+                    parts.push(format!("ct_state={s}"));
+                } else {
+                    parts.push(format!("ct_state={s}/{}", format_ct_state(mask)));
+                }
+            } else {
+                parts.push(format!("ct_state={s}"));
+            }
+        }
+        if let Some(z) = self.ct_zone {
+            parts.push(format!("ct_zone={z}"));
+        }
+        if let Some(mark) = self.ct_mark {
+            if let Some(mask) = self.ct_mark_mask {
+                if mask == u32::MAX {
+                    parts.push(format!("ct_mark=0x{mark:x}"));
+                } else {
+                    parts.push(format!("ct_mark=0x{mark:x}/0x{mask:x}"));
+                }
+            } else {
+                parts.push(format!("ct_mark=0x{mark:x}"));
+            }
+        }
+
+        write!(f, "{}", parts.join(","))
+    }
+}
+
+impl Match {
     /// Decode OXM fields from raw bytes (without match header).
     ///
     /// This is useful for parsing match fields from Packet-In messages
@@ -1129,10 +1338,10 @@ impl Match {
         // Connection tracking (NXM fields)
         if let Some(state) = self.ct_state {
             if let Some(mask) = self.ct_state_mask {
-                if mask != 0xffff_ffff {
-                    oxm_fields.extend(oxm::encode_ct_state_masked(state, mask));
-                } else {
+                if mask == 0xffff_ffff {
                     oxm_fields.extend(oxm::encode_ct_state(state));
+                } else {
+                    oxm_fields.extend(oxm::encode_ct_state_masked(state, mask));
                 }
             } else {
                 oxm_fields.extend(oxm::encode_ct_state(state));
