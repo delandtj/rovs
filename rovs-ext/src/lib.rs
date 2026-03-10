@@ -166,6 +166,7 @@
 pub mod controller;
 mod error;
 pub mod flows;
+pub mod ovsdb;
 pub mod topology;
 pub mod util;
 
@@ -192,3 +193,6 @@ pub use controller::{Controller, ControllerConfig, HandlerAction, PacketHandler}
 pub use util::{
     format_ipv4, format_mac, ipv4_to_u32, mac_to_u64, parse_ipv4, parse_mac, PortMapper,
 };
+
+// Re-export shared OVSDB handle
+pub use ovsdb::OvsdbHandle;
