@@ -18,6 +18,12 @@ OPENFLOW_ADDR=tcp:127.0.0.1:6653 cargo run -p rovs-ext --example stateful_firewa
 
 ## Examples by Category
 
+### AppCtl / Datapath Inspection
+
+| Example | Description | Requires |
+|---------|-------------|----------|
+| [`appctl_inspect`](appctl_inspect.rs) | Dump datapath flows, conntrack entries, and stats | Full (vswitchd) |
+
 ### OVSDB / Topology
 
 | Example | Description | Requires |
@@ -57,6 +63,28 @@ OPENFLOW_ADDR=tcp:127.0.0.1:6653 cargo run -p rovs-ext --example stateful_firewa
 | [`test_nat`](test_nat.rs) | NAT action encoding tests | OpenFlow |
 
 ## Example Details
+
+### appctl_inspect
+
+Connects directly to the `ovs-vswitchd` unixctl socket to inspect switch internals — the Rust equivalent of `ovs-appctl`. Shows datapath overview, flow table with stats, conntrack entries, and conntrack statistics.
+
+```bash
+# Start container with vswitchd (required for appctl)
+./scripts/test-with-ovs.sh start full
+
+# Basic inspection
+cargo run -p rovs-ext --example appctl_inspect
+
+# Inspect specific bridge with verbose flow masks
+cargo run -p rovs-ext --example appctl_inspect -- --bridge br0 -m
+
+# Filter conntrack by zone, flush before inspecting
+cargo run -p rovs-ext --example appctl_inspect -- --zone 1 --flush
+
+# Specify socket path explicitly
+VSWITCHD_SOCKET=/var/run/openvswitch/ovs-vswitchd.123.ctl \
+    cargo run -p rovs-ext --example appctl_inspect
+```
 
 ### topology_builder
 
@@ -158,8 +186,11 @@ Most OpenFlow examples support `--no-cleanup` to leave flows installed:
 # Run example without cleanup
 OPENFLOW_ADDR=tcp:127.0.0.1:6653 cargo run -p rovs-ext --example ipv6_features -- --no-cleanup
 
-# Inspect flows
+# Inspect OpenFlow flows via container
 podman exec rovs-ovsdb-test ovs-ofctl dump-flows br-test -O OpenFlow13
+
+# Inspect datapath flows natively via appctl (no shelling out)
+cargo run -p rovs-ext --example appctl_inspect -- --bridge br-test -m
 
 # Manual cleanup
 podman exec rovs-ovsdb-test ovs-ofctl del-flows br-test -O OpenFlow13

@@ -45,6 +45,10 @@ pub enum Error {
     #[error("parse error: {0}")]
     Parse(String),
 
+    /// AppCtl (unixctl) command error.
+    #[error("appctl error: {0}")]
+    AppCtl(String),
+
     /// IO error.
     #[error("io error: {0}")]
     Io(#[from] std::io::Error),

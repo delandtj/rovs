@@ -1,5 +1,6 @@
 //! JSON-RPC message types.
 
+use serde::de::{self, Deserializer};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -124,13 +125,49 @@ impl Response {
 }
 
 /// A JSON-RPC error object.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+///
+/// Handles two wire formats:
+/// - **OVSDB**: `{"error": "message", "details": "extra info"}`
+/// - **unixctl**: `"plain error string"`
+///
+/// A plain string deserializes to `RpcError { error: "the string", details: None }`.
+#[derive(Debug, Clone, Serialize)]
 pub struct RpcError {
     /// Error message
     pub error: String,
     /// Optional additional details
     #[serde(skip_serializing_if = "Option::is_none")]
     pub details: Option<String>,
+}
+
+impl<'de> Deserialize<'de> for RpcError {
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let value = serde_json::Value::deserialize(deserializer)?;
+        match value {
+            serde_json::Value::String(s) => Ok(Self {
+                error: s,
+                details: None,
+            }),
+            serde_json::Value::Object(map) => {
+                let error = map
+                    .get("error")
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or("unknown error")
+                    .to_owned();
+                let details = map
+                    .get("details")
+                    .and_then(serde_json::Value::as_str)
+                    .map(String::from);
+                Ok(Self { error, details })
+            }
+            other => Err(de::Error::custom(format!(
+                "expected string or object for RpcError, got {other}"
+            ))),
+        }
+    }
 }
 
 impl std::fmt::Display for RpcError {
@@ -140,5 +177,80 @@ impl std::fmt::Display for RpcError {
             write!(f, ": {details}")?;
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn rpc_error_from_plain_string() {
+        // unixctl format: {"error": "unknown command"}
+        let json = r#""unknown command""#;
+        let err: RpcError = serde_json::from_str(json).unwrap();
+        assert_eq!(err.error, "unknown command");
+        assert!(err.details.is_none());
+    }
+
+    #[test]
+    fn rpc_error_from_object() {
+        // OVSDB format: {"error": {"error": "constraint violation", "details": "..."}}
+        let json = r#"{"error": "constraint violation", "details": "column name is immutable"}"#;
+        let err: RpcError = serde_json::from_str(json).unwrap();
+        assert_eq!(err.error, "constraint violation");
+        assert_eq!(err.details.as_deref(), Some("column name is immutable"));
+    }
+
+    #[test]
+    fn rpc_error_from_object_no_details() {
+        let json = r#"{"error": "some error"}"#;
+        let err: RpcError = serde_json::from_str(json).unwrap();
+        assert_eq!(err.error, "some error");
+        assert!(err.details.is_none());
+    }
+
+    #[test]
+    fn rpc_error_display() {
+        let err = RpcError {
+            error: "bad request".to_owned(),
+            details: Some("missing field".to_owned()),
+        };
+        assert_eq!(err.to_string(), "bad request: missing field");
+
+        let err = RpcError {
+            error: "not found".to_owned(),
+            details: None,
+        };
+        assert_eq!(err.to_string(), "not found");
+    }
+
+    #[test]
+    fn response_with_string_error() {
+        // Full unixctl response with plain string error
+        let json = r#"{"result": null, "error": "unknown command dpif/bad", "id": 0}"#;
+        let resp: Response = serde_json::from_str(json).unwrap();
+        assert!(resp.is_error());
+        assert_eq!(resp.error.unwrap().error, "unknown command dpif/bad");
+    }
+
+    #[test]
+    fn response_with_object_error() {
+        // Full OVSDB response with object error
+        let json = r#"{"result": null, "error": {"error": "constraint violation", "details": "x"}, "id": 1}"#;
+        let resp: Response = serde_json::from_str(json).unwrap();
+        assert!(resp.is_error());
+        let err = resp.error.unwrap();
+        assert_eq!(err.error, "constraint violation");
+        assert_eq!(err.details.as_deref(), Some("x"));
+    }
+
+    #[test]
+    fn response_with_null_error() {
+        // Successful response
+        let json = r#"{"result": "some output", "error": null, "id": 0}"#;
+        let resp: Response = serde_json::from_str(json).unwrap();
+        assert!(!resp.is_error());
+        assert!(resp.error.is_none());
     }
 }

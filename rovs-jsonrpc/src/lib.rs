@@ -14,6 +14,6 @@ mod message;
 
 pub use connection::Connection;
 pub use error::Error;
-pub use message::{Message, Request, Response, RpcId};
+pub use message::{Message, Request, Response, RpcError, RpcId};
 
 pub type Result<T> = std::result::Result<T, Error>;
