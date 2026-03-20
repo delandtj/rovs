@@ -16,16 +16,19 @@ edition = "2024"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/delandtj/rovs"
 rust-version = "1.85"
+keywords = ["ovs", "openflow", "sdn", "ovsdb", "networking"]
+categories = ["network-programming"]
+readme = "README.md"
 
 [workspace.dependencies]
 # Internal crates
-rovs-types = { path = "rovs-types" }
-rovs-transport = { path = "rovs-transport" }
-rovs-jsonrpc = { path = "rovs-jsonrpc" }
-rovs-ovsdb = { path = "rovs-ovsdb" }
-rovs-openflow = { path = "rovs-openflow" }
-rovs-client = { path = "rovs-client" }
-rovs-ext = { path = "rovs-ext" }
+rovs-types = { version = "0.2.0", path = "rovs-types" }
+rovs-transport = { version = "0.2.0", path = "rovs-transport" }
+rovs-jsonrpc = { version = "0.2.0", path = "rovs-jsonrpc" }
+rovs-ovsdb = { version = "0.2.0", path = "rovs-ovsdb" }
+rovs-openflow = { version = "0.2.0", path = "rovs-openflow" }
+rovs-client = { version = "0.2.0", path = "rovs-client" }
+rovs-ext = { version = "0.2.0", path = "rovs-ext" }
 
 # Async runtime
 tokio = { version = "1", features = ["full"] }
