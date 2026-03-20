@@ -463,7 +463,7 @@ dependencies = [
 
 [[package]]
 name = "rovs-client"
-version = "0.1.3"
+version = "0.2.0"
 dependencies = [
  "rovs-jsonrpc",
  "rovs-openflow",
@@ -481,7 +481,7 @@ dependencies = [
 
 [[package]]
 name = "rovs-ext"
-version = "0.1.3"
+version = "0.2.0"
 dependencies = [
  "clap",
  "rovs-jsonrpc",
@@ -498,7 +498,7 @@ dependencies = [
 
 [[package]]
 name = "rovs-jsonrpc"
-version = "0.1.3"
+version = "0.2.0"
 dependencies = [
  "rovs-transport",
  "serde",
@@ -510,7 +510,7 @@ dependencies = [
 
 [[package]]
 name = "rovs-openflow"
-version = "0.1.3"
+version = "0.2.0"
 dependencies = [
  "bytes",
  "nom",
@@ -522,7 +522,7 @@ dependencies = [
 
 [[package]]
 name = "rovs-ovsdb"
-version = "0.1.3"
+version = "0.2.0"
 dependencies = [
  "rovs-jsonrpc",
  "rovs-transport",
@@ -537,7 +537,7 @@ dependencies = [
 
 [[package]]
 name = "rovs-transport"
-version = "0.1.3"
+version = "0.2.0"
 dependencies = [
  "rustls-pemfile",
  "thiserror",
@@ -548,7 +548,7 @@ dependencies = [
 
 [[package]]
 name = "rovs-types"
-version = "0.1.3"
+version = "0.2.0"
 dependencies = [
  "serde",
  "serde_json",

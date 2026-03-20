@@ -29,6 +29,10 @@ pub const IP_DST: u32 = 0x0000_0e04;
 pub const TCP_SRC: u32 = 0x0000_1002;
 /// NXM_OF_TCP_DST: TCP destination port (2 bytes)
 pub const TCP_DST: u32 = 0x0000_1202;
+/// NXM_OF_UDP_SRC: UDP source port (2 bytes)
+pub const UDP_SRC: u32 = 0x0000_1602;
+/// NXM_OF_UDP_DST: UDP destination port (2 bytes)
+pub const UDP_DST: u32 = 0x0000_1802;
 /// NXM_OF_ARP_OP: ARP opcode (2 bytes)
 pub const ARP_OP: u32 = 0x0000_1e02;
 /// NXM_OF_ARP_SPA: ARP source IPv4 address (4 bytes)
@@ -50,6 +54,10 @@ pub const REG1: u32 = 0x0001_0204;
 pub const REG2: u32 = 0x0001_0404;
 /// NXM_NX_TUN_ID: Tunnel ID (8 bytes)
 pub const TUN_ID: u32 = 0x0001_2008;
+/// NXM_NX_IPV6_SRC: IPv6 source address (16 bytes) — OXM class 0x8000, field 26
+pub const IPV6_SRC: u32 = 0x8000_3410;
+/// NXM_NX_IPV6_DST: IPv6 destination address (16 bytes) — OXM class 0x8000, field 27
+pub const IPV6_DST: u32 = 0x8000_3610;
 
 // OXM_OF_* fields (class 0x8000) - OpenFlow 1.3+
 

@@ -21,6 +21,7 @@
 mod action;
 mod error;
 mod flow;
+mod flow_monitor;
 mod instruction;
 mod match_fields;
 mod message;
@@ -34,6 +35,7 @@ mod vconn;
 pub use action::{nxm, Action, ActionList, LearnSpec, NatConfig, NxLearn, OutputPort, CT_COMMIT};
 pub use error::{Error, OfError, OfErrorType};
 pub use flow::{Flow, FlowCommand, FlowFlags, FlowStats};
+pub use flow_monitor::{monitor_flags, FlowMonitorRequest, FlowUpdate, FlowUpdateEvent, FlowUpdateFull};
 pub use instruction::{Instruction, InstructionList};
 pub use match_fields::Match;
 pub use message::{Header, Message, MessageType};

@@ -655,6 +655,8 @@ impl Match {
                 Self::decode_oxm_field(&mut m, field, has_mask, value, value_len);
             } else if oxm_class == OxmClass::Nxm1 as u16 {
                 Self::decode_nxm_field(&mut m, field, has_mask, value, value_len);
+            } else if oxm_class == OxmClass::Nxm0 as u16 {
+                Self::decode_nxm0_field(&mut m, field, has_mask, value, value_len);
             }
             // Skip unknown classes
 
@@ -718,6 +720,8 @@ impl Match {
                 Self::decode_oxm_field(&mut m, field, has_mask, value, value_len);
             } else if oxm_class == OxmClass::Nxm1 as u16 {
                 Self::decode_nxm_field(&mut m, field, has_mask, value, value_len);
+            } else if oxm_class == OxmClass::Nxm0 as u16 {
+                Self::decode_nxm0_field(&mut m, field, has_mask, value, value_len);
             }
             // Skip unknown classes
 
@@ -963,6 +967,127 @@ impl Match {
     }
 
     /// Decode an NXM field (Nicira extensions).
+    /// Decode an NXM0 field (Nicira class 0x0000 — OpenFlow 1.0 compatible fields).
+    ///
+    /// NXM0 field numbering differs from OXM (OpenFlow Basic class):
+    ///   0=IN_PORT, 1=ETH_DST, 2=ETH_SRC, 3=ETH_TYPE, 4=VLAN_TCI,
+    ///   5=IP_TOS, 6=IP_PROTO, 7=IP_SRC, 8=IP_DST, 9=TCP_SRC,
+    ///   10=TCP_DST, 11=UDP_SRC, 12=UDP_DST, 13=ICMP_TYPE, 14=ICMP_CODE,
+    ///   15=ARP_OP, 16=ARP_SPA, 17=ARP_TPA
+    fn decode_nxm0_field(
+        m: &mut Match,
+        field: u8,
+        has_mask: bool,
+        value: &[u8],
+        value_len: usize,
+    ) {
+        match field {
+            // NXM_OF_IN_PORT (2 bytes, stored as u32 in Match)
+            0 if value_len >= 2 => {
+                m.in_port = Some(u16::from_be_bytes([value[0], value[1]]) as u32);
+            }
+            // NXM_OF_ETH_DST (6 bytes)
+            1 if value_len >= 6 => {
+                let mut mac = [0u8; 6];
+                mac.copy_from_slice(&value[..6]);
+                m.eth_dst = Some(mac);
+                if has_mask && value.len() >= 12 {
+                    let mut mask = [0u8; 6];
+                    mask.copy_from_slice(&value[6..12]);
+                    m.eth_dst_mask = Some(mask);
+                }
+            }
+            // NXM_OF_ETH_SRC (6 bytes)
+            2 if value_len >= 6 => {
+                let mut mac = [0u8; 6];
+                mac.copy_from_slice(&value[..6]);
+                m.eth_src = Some(mac);
+                if has_mask && value.len() >= 12 {
+                    let mut mask = [0u8; 6];
+                    mask.copy_from_slice(&value[6..12]);
+                    m.eth_src_mask = Some(mask);
+                }
+            }
+            // NXM_OF_ETH_TYPE (2 bytes)
+            3 if value_len >= 2 => {
+                m.eth_type = Some(u16::from_be_bytes([value[0], value[1]]));
+            }
+            // NXM_OF_VLAN_TCI (2 bytes)
+            4 if value_len >= 2 => {
+                let tci = u16::from_be_bytes([value[0], value[1]]);
+                // VLAN VID is the lower 12 bits with OFPVID_PRESENT (0x1000)
+                m.vlan_vid = Some(tci);
+            }
+            // NXM_OF_IP_TOS (1 byte — contains DSCP in upper 6 bits)
+            5 if value_len >= 1 => {
+                m.ip_dscp = Some(value[0] >> 2);
+            }
+            // NXM_OF_IP_PROTO (1 byte)
+            6 if value_len >= 1 => {
+                m.ip_proto = Some(value[0]);
+            }
+            // NXM_OF_IP_SRC (4 bytes)
+            7 if value_len >= 4 => {
+                m.ipv4_src = Some(Ipv4Addr::new(value[0], value[1], value[2], value[3]));
+                if has_mask && value.len() >= 8 {
+                    let mask = u32::from_be_bytes([value[4], value[5], value[6], value[7]]);
+                    m.ipv4_src_mask = Some(mask_to_prefix(mask));
+                } else {
+                    m.ipv4_src_mask = Some(32);
+                }
+            }
+            // NXM_OF_IP_DST (4 bytes)
+            8 if value_len >= 4 => {
+                m.ipv4_dst = Some(Ipv4Addr::new(value[0], value[1], value[2], value[3]));
+                if has_mask && value.len() >= 8 {
+                    let mask = u32::from_be_bytes([value[4], value[5], value[6], value[7]]);
+                    m.ipv4_dst_mask = Some(mask_to_prefix(mask));
+                } else {
+                    m.ipv4_dst_mask = Some(32);
+                }
+            }
+            // NXM_OF_TCP_SRC (2 bytes)
+            9 if value_len >= 2 => {
+                m.tcp_src = Some(u16::from_be_bytes([value[0], value[1]]));
+            }
+            // NXM_OF_TCP_DST (2 bytes)
+            10 if value_len >= 2 => {
+                m.tcp_dst = Some(u16::from_be_bytes([value[0], value[1]]));
+            }
+            // NXM_OF_UDP_SRC (2 bytes)
+            11 if value_len >= 2 => {
+                m.udp_src = Some(u16::from_be_bytes([value[0], value[1]]));
+            }
+            // NXM_OF_UDP_DST (2 bytes)
+            12 if value_len >= 2 => {
+                m.udp_dst = Some(u16::from_be_bytes([value[0], value[1]]));
+            }
+            // NXM_OF_ICMP_TYPE (1 byte)
+            13 if value_len >= 1 => {
+                m.icmp_type = Some(value[0]);
+            }
+            // NXM_OF_ICMP_CODE (1 byte)
+            14 if value_len >= 1 => {
+                m.icmp_code = Some(value[0]);
+            }
+            // NXM_OF_ARP_OP (2 bytes)
+            15 if value_len >= 2 => {
+                m.arp_op = Some(u16::from_be_bytes([value[0], value[1]]));
+            }
+            // NXM_OF_ARP_SPA (4 bytes)
+            16 if value_len >= 4 => {
+                m.arp_spa = Some(Ipv4Addr::new(value[0], value[1], value[2], value[3]));
+            }
+            // NXM_OF_ARP_TPA (4 bytes)
+            17 if value_len >= 4 => {
+                m.arp_tpa = Some(Ipv4Addr::new(value[0], value[1], value[2], value[3]));
+            }
+            _ => {
+                // Unknown NXM0 field, skip
+            }
+        }
+    }
+
     fn decode_nxm_field(
         m: &mut Match,
         field: u8,
@@ -1372,6 +1497,21 @@ impl Match {
         buf.extend(oxm_fields);
         buf.extend(std::iter::repeat_n(0u8, padding));
         buf
+    }
+
+    /// Encode just the OXM/NXM field TLVs without the match header.
+    ///
+    /// This is used by protocols that embed raw OXM fields without the
+    /// standard OpenFlow match header (e.g., Nicira flow monitor requests).
+    pub fn encode_oxm_fields(&self) -> Vec<u8> {
+        // Re-use the full encode, then strip the 4-byte header and padding
+        let full = self.encode();
+        if full.len() <= 4 {
+            return Vec::new();
+        }
+        let match_len = u16::from_be_bytes([full[2], full[3]]) as usize;
+        // OXM fields are bytes 4..match_len (before padding)
+        full[4..match_len].to_vec()
     }
 }
 

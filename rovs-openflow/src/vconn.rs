@@ -6,6 +6,7 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use rovs_transport::{Address, Stream};
 
 use crate::error::OfError;
+use crate::flow_monitor::{parse_flow_monitor_reply, FlowMonitorRequest, FlowUpdate};
 use crate::multipart::{parse_flow_stats_reply, FlowStatsEntry, FlowStatsRequest};
 use crate::packet_in::PacketIn;
 use crate::packet_out::PacketOut;
@@ -333,6 +334,91 @@ impl VConn {
 
         // Other message types
         Ok(None)
+    }
+
+    /// Register a flow monitor and receive the initial snapshot.
+    ///
+    /// Sends the monitor request and collects the initial flow updates
+    /// (if `NXFMF_INITIAL` flag was set in the request). After this returns,
+    /// use `recv_flow_updates()` to receive ongoing updates.
+    ///
+    /// Use a dedicated VConn for monitoring — the monitor produces a
+    /// continuous stream that occupies the connection's recv path.
+    pub async fn monitor_flows(
+        &mut self,
+        request: FlowMonitorRequest,
+    ) -> Result<Vec<FlowUpdate>> {
+        let xid = self.next_xid();
+        let msg = request.to_message(self.version, xid);
+        self.send_message(&msg).await?;
+
+        let mut all_updates = Vec::new();
+
+        // Collect initial snapshot (multipart replies until no MORE flag)
+        loop {
+            let reply = self.recv_message().await?;
+
+            Self::check_error(&reply)?;
+
+            if reply.header.msg_type == MessageType::EchoRequest {
+                let echo_reply = Message::new(
+                    self.version,
+                    MessageType::EchoReply,
+                    reply.header.xid,
+                    reply.body.clone(),
+                );
+                self.send_message(&echo_reply).await?;
+                continue;
+            }
+
+            if reply.header.msg_type != MessageType::MultipartReply {
+                continue;
+            }
+
+            let (updates, has_more) = parse_flow_monitor_reply(&reply.body)?;
+            all_updates.extend(updates);
+
+            if !has_more {
+                break;
+            }
+        }
+
+        Ok(all_updates)
+    }
+
+    /// Receive the next batch of flow monitor updates.
+    ///
+    /// Blocks until flow update messages are received from OVS.
+    /// Handles echo requests internally. Returns the parsed updates.
+    ///
+    /// Call this in a loop after `monitor_flows()` to receive ongoing
+    /// flow change notifications.
+    pub async fn recv_flow_updates(&mut self) -> Result<Vec<FlowUpdate>> {
+        loop {
+            let msg = self.recv_message().await?;
+
+            Self::check_error(&msg)?;
+
+            if msg.header.msg_type == MessageType::EchoRequest {
+                let echo_reply = Message::new(
+                    self.version,
+                    MessageType::EchoReply,
+                    msg.header.xid,
+                    msg.body.clone(),
+                );
+                self.send_message(&echo_reply).await?;
+                continue;
+            }
+
+            if msg.header.msg_type == MessageType::MultipartReply {
+                let (updates, _has_more) = parse_flow_monitor_reply(&msg.body)?;
+                if !updates.is_empty() {
+                    return Ok(updates);
+                }
+            }
+
+            // Skip other message types (PacketIn, PortStatus, FlowRemoved, etc.)
+        }
     }
 
     /// Send a Packet-Out message.
