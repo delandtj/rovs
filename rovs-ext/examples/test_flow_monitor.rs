@@ -86,9 +86,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Clean up
     println!("\n--- Deleting test flow ---");
-    let del = Flow::delete()
-        .table(0)
-        .cookie(0xCAFE);
+    let del = Flow::delete().table(0).cookie(0xCAFE);
     ops.send_flow_sync(&del).await?;
 
     let updates = mon.recv_flow_updates().await?;

@@ -64,8 +64,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("(Make sure the bridge is configured to connect to this controller)\n");
 
     // Create controller configuration
-    let config = ControllerConfig::new()
-        .log_unhandled(true); // Log packets we don't handle (useful for debugging)
+    let config = ControllerConfig::new().log_unhandled(true); // Log packets we don't handle (useful for debugging)
 
     // Create the controller
     let mut controller = Controller::new(&addr, config).await?;
@@ -110,10 +109,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Add IPv6 -> MAC mappings
     ndp_handler.add_entry("fd00::99".parse()?, [0x02, 0x00, 0x00, 0x00, 0x00, 0x99]);
     ndp_handler.add_entry("fd00::100".parse()?, [0x02, 0x00, 0x00, 0x00, 0x00, 0xaa]);
-    ndp_handler.add_entry(
-        "2001:db8::1".parse()?,
-        [0x02, 0x00, 0x00, 0x00, 0x01, 0x01],
-    );
+    ndp_handler.add_entry("2001:db8::1".parse()?, [0x02, 0x00, 0x00, 0x00, 0x01, 0x01]);
 
     println!("  fd00::99    -> 02:00:00:00:00:99");
     println!("  fd00::100   -> 02:00:00:00:00:aa");

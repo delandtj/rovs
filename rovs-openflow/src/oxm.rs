@@ -701,7 +701,11 @@ pub fn encode_xxreg_ipv6(reg_num: u8, addr: std::net::Ipv6Addr) -> Vec<u8> {
 /// Returns 36 bytes: 4-byte header + 16-byte address + 16-byte mask.
 #[allow(dead_code)]
 #[must_use]
-pub fn encode_xxreg_ipv6_masked(reg_num: u8, addr: std::net::Ipv6Addr, mask: std::net::Ipv6Addr) -> Vec<u8> {
+pub fn encode_xxreg_ipv6_masked(
+    reg_num: u8,
+    addr: std::net::Ipv6Addr,
+    mask: std::net::Ipv6Addr,
+) -> Vec<u8> {
     encode_xxreg_masked(reg_num, u128::from(addr), u128::from(mask))
 }
 
@@ -1242,7 +1246,7 @@ mod tests {
     fn encode_u32_ipv4_src() {
         // IPv4 src = 10.0.0.1 = 0x0a000001
         // Ipv4Src: field=11
-        let ip: u32 = (10 << 24) | (0 << 16) | (0 << 8) | 1;
+        let ip: u32 = (10 << 24) | 1;
         let bytes = encode_u32_field(OxmField::Ipv4Src, ip);
 
         assert_eq!(bytes.len(), 8);
@@ -1269,7 +1273,7 @@ mod tests {
     fn encode_u64_metadata() {
         // Metadata = 0x123456789ABCDEF0
         // Metadata: field=2
-        let bytes = encode_u64_field(OxmField::Metadata, 0x123456789ABCDEF0);
+        let bytes = encode_u64_field(OxmField::Metadata, 0x1234_5678_9ABC_DEF0);
 
         assert_eq!(bytes.len(), 12);
         // byte 2: (2 << 1) | 0 = 0x04
@@ -1336,7 +1340,7 @@ mod tests {
     #[test]
     fn encode_nxm_register_raw() {
         // NXM_NX_REG0 (class=0x0001, field=0) with value 0x12345678
-        let bytes = encode_u32(OxmClass::Nxm1, 0, 0x12345678);
+        let bytes = encode_u32(OxmClass::Nxm1, 0, 0x1234_5678);
 
         assert_eq!(bytes.len(), 8);
         assert_eq!(&bytes[0..4], &[0x00, 0x01, 0x00, 0x04]);
@@ -1422,7 +1426,7 @@ mod tests {
     fn encode_ipv4_prefix_convenience() {
         // Test the convenience function
         // 10.0.0.0/24
-        let addr: u32 = (10 << 24) | (0 << 16) | (0 << 8) | 1; // 10.0.0.1
+        let addr: u32 = (10 << 24) | 1; // 10.0.0.1
         let bytes = encode_ipv4_prefix(OxmField::Ipv4Dst, addr, 24);
 
         assert_eq!(bytes.len(), 12);
@@ -1498,7 +1502,7 @@ mod tests {
     #[test]
     fn encode_reg_0() {
         // NXM_NX_REG0 = 0x12345678
-        let bytes = encode_reg(0, 0x12345678);
+        let bytes = encode_reg(0, 0x1234_5678);
 
         assert_eq!(bytes.len(), 8);
         // Header: class=0x0001, field=0, no mask, length=4
@@ -1509,7 +1513,7 @@ mod tests {
     #[test]
     fn encode_reg_15() {
         // NXM_NX_REG15 = 0xdeadbeef
-        let bytes = encode_reg(15, 0xdeadbeef);
+        let bytes = encode_reg(15, 0xdead_beef);
 
         assert_eq!(bytes.len(), 8);
         // Header: class=0x0001, field=15, no mask, length=4
@@ -1521,7 +1525,7 @@ mod tests {
     #[test]
     fn encode_reg_masked_partial() {
         // NXM_NX_REG5 with mask (match only low 8 bits)
-        let bytes = encode_reg_masked(5, 0x42, 0x000000ff);
+        let bytes = encode_reg_masked(5, 0x42, 0x0000_00ff);
 
         assert_eq!(bytes.len(), 12);
         // Header: class=0x0001, field=5, has_mask=1, length=8
@@ -1547,7 +1551,7 @@ mod tests {
     #[test]
     fn encode_tun_id_masked_value() {
         // NXM_NX_TUN_ID with high 32-bit mask
-        let bytes = encode_tun_id_masked(0x12345678_00000000, 0xffffffff_00000000);
+        let bytes = encode_tun_id_masked(0x1234_5678_0000_0000, 0xffff_ffff_0000_0000);
 
         assert_eq!(bytes.len(), 20);
         // Header: class=0x0001, field=16, has_mask=1, length=16
@@ -1648,7 +1652,7 @@ mod tests {
     #[test]
     fn encode_ct_mark_value() {
         // NXM_NX_CT_MARK = 0xaabbccdd
-        let bytes = encode_ct_mark(0xaabbccdd);
+        let bytes = encode_ct_mark(0xaabb_ccdd);
 
         assert_eq!(bytes.len(), 8);
         // Header: class=0x0001, field=107, no mask, length=4
@@ -1660,7 +1664,7 @@ mod tests {
     #[test]
     fn encode_ct_mark_masked_value() {
         // NXM_NX_CT_MARK with high byte mask
-        let bytes = encode_ct_mark_masked(0xff000000, 0xff000000);
+        let bytes = encode_ct_mark_masked(0xff00_0000, 0xff00_0000);
 
         assert_eq!(bytes.len(), 12);
         // byte 2: (107 << 1) | 1 = 0xd7
@@ -1672,7 +1676,7 @@ mod tests {
     #[test]
     fn encode_ct_label_value() {
         // NXM_NX_CT_LABEL = 0x12345678_9abcdef0_12345678_9abcdef0
-        let label: u128 = 0x123456789abcdef0_123456789abcdef0;
+        let label: u128 = 0x1234_5678_9abc_def0_1234_5678_9abc_def0;
         let bytes = encode_ct_label(label);
 
         assert_eq!(bytes.len(), 20);
@@ -1691,8 +1695,8 @@ mod tests {
     #[test]
     fn encode_ct_label_masked_value() {
         // NXM_NX_CT_LABEL with high 64-bit mask
-        let label: u128 = 0xdeadbeef_00000000_00000000_00000000;
-        let mask: u128 = 0xffffffff_00000000_00000000_00000000;
+        let label: u128 = 0xdead_beef_0000_0000_0000_0000_0000_0000;
+        let mask: u128 = 0xffff_ffff_0000_0000_0000_0000_0000_0000;
         let bytes = encode_ct_label_masked(label, mask);
 
         assert_eq!(bytes.len(), 36);
@@ -1732,7 +1736,7 @@ mod tests {
     #[test]
     fn encode_xxreg_0() {
         // NXM_NX_XXREG0 = 0x0123456789abcdef_fedcba9876543210
-        let value: u128 = 0x0123456789abcdef_fedcba9876543210;
+        let value: u128 = 0x0123_4567_89ab_cdef_fedc_ba98_7654_3210;
         let bytes = encode_xxreg(0, value);
 
         assert_eq!(bytes.len(), 20);
@@ -1751,7 +1755,7 @@ mod tests {
     #[test]
     fn encode_xxreg_3() {
         // NXM_NX_XXREG3
-        let value: u128 = 0xdeadbeef_cafebabe_12345678_9abcdef0;
+        let value: u128 = 0xdead_beef_cafe_babe_1234_5678_9abc_def0;
         let bytes = encode_xxreg(3, value);
 
         assert_eq!(bytes.len(), 20);
@@ -1763,8 +1767,8 @@ mod tests {
     #[test]
     fn encode_xxreg_masked_high64() {
         // NXM_NX_XXREG1 with high 64-bit mask
-        let value: u128 = 0xaabbccdd_eeff0011_00000000_00000000;
-        let mask: u128 = 0xffffffff_ffffffff_00000000_00000000;
+        let value: u128 = 0xaabb_ccdd_eeff_0011_0000_0000_0000_0000;
+        let mask: u128 = 0xffff_ffff_ffff_ffff_0000_0000_0000_0000;
         let bytes = encode_xxreg_masked(1, value, mask);
 
         assert_eq!(bytes.len(), 36);
@@ -1787,7 +1791,9 @@ mod tests {
         // IPv6 address bytes: 2001:0db8:0000:0000:0000:0000:0000:0001
         assert_eq!(
             &bytes[4..20],
-            &[0x20, 0x01, 0x0d, 0xb8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x01]
+            &[
+                0x20, 0x01, 0x0d, 0xb8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x01
+            ]
         );
     }
 
@@ -1811,7 +1817,7 @@ mod tests {
         // /64 prefix
         assert_eq!(
             prefix_to_mask_v6(64),
-            0xffffffff_ffffffff_00000000_00000000
+            0xffff_ffff_ffff_ffff_0000_0000_0000_0000
         );
     }
 
@@ -1829,15 +1835,21 @@ mod tests {
 
     #[test]
     fn prefix_to_mask_v6_various() {
-        assert_eq!(prefix_to_mask_v6(32), 0xffffffff_00000000_00000000_00000000);
-        assert_eq!(prefix_to_mask_v6(48), 0xffffffff_ffff0000_00000000_00000000);
+        assert_eq!(
+            prefix_to_mask_v6(32),
+            0xffff_ffff_0000_0000_0000_0000_0000_0000
+        );
+        assert_eq!(
+            prefix_to_mask_v6(48),
+            0xffff_ffff_ffff_0000_0000_0000_0000_0000
+        );
         assert_eq!(
             prefix_to_mask_v6(96),
-            0xffffffff_ffffffff_ffffffff_00000000
+            0xffff_ffff_ffff_ffff_ffff_ffff_0000_0000
         );
         assert_eq!(
             prefix_to_mask_v6(120),
-            0xffffffff_ffffffff_ffffffff_ffffff00
+            0xffff_ffff_ffff_ffff_ffff_ffff_ffff_ff00
         );
     }
 
@@ -1877,12 +1889,12 @@ mod tests {
     #[test]
     fn trait_oxm_ipv4_src_masked() {
         // 10.0.0.0/24
-        let field = OxmMatchField::Ipv4SrcMasked(0x0a000000, 0xffffff00);
+        let field = OxmMatchField::Ipv4SrcMasked(0x0a00_0000, 0xffff_ff00);
         let bytes = field.encode();
 
         assert_eq!(
             bytes,
-            encode_u32_masked_field(OxmField::Ipv4Src, 0x0a000000, 0xffffff00)
+            encode_u32_masked_field(OxmField::Ipv4Src, 0x0a00_0000, 0xffff_ff00)
         );
         assert_eq!(bytes.len(), 12);
     }
@@ -1928,10 +1940,10 @@ mod tests {
 
     #[test]
     fn trait_nxm_reg() {
-        let field = NxmMatchField::Reg(0, 0x12345678);
+        let field = NxmMatchField::Reg(0, 0x1234_5678);
         let bytes = field.encode();
 
-        assert_eq!(bytes, encode_reg(0, 0x12345678));
+        assert_eq!(bytes, encode_reg(0, 0x1234_5678));
         assert_eq!(bytes.len(), 8);
     }
 
@@ -1973,12 +1985,12 @@ mod tests {
 
     #[test]
     fn trait_nxm_xxreg() {
-        let field = NxmMatchField::XxReg(0, 0x123456789abcdef0_fedcba9876543210);
+        let field = NxmMatchField::XxReg(0, 0x1234_5678_9abc_def0_fedc_ba98_7654_3210);
         let bytes = field.encode();
 
         assert_eq!(
             bytes,
-            encode_xxreg(0, 0x123456789abcdef0_fedcba9876543210)
+            encode_xxreg(0, 0x1234_5678_9abc_def0_fedc_ba98_7654_3210)
         );
         assert_eq!(bytes.len(), 20);
     }
@@ -2040,7 +2052,7 @@ mod tests {
 
     #[test]
     fn trait_nxm_ct_label() {
-        let label: u128 = 0x12345678_9abcdef0_12345678_9abcdef0;
+        let label: u128 = 0x1234_5678_9abc_def0_1234_5678_9abc_def0;
         let field = NxmMatchField::CtLabel(label);
         let bytes = field.encode();
 

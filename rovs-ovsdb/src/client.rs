@@ -322,7 +322,8 @@ impl Client {
         // First, check for buffered notifications from previous operations
         while let Some(notification) = self.conn.pop_notification() {
             if notification.method == "echo" {
-                self.send_echo_reply(&notification.params, notification.id.as_ref()).await?;
+                self.send_echo_reply(&notification.params, notification.id.as_ref())
+                    .await?;
                 continue;
             }
             if let Some(updated) = self.process_notification(&notification) {
@@ -383,10 +384,16 @@ impl Client {
     }
 
     /// Send echo reply to server.
-    async fn send_echo_reply(&mut self, params: &Value, id: Option<&rovs_jsonrpc::RpcId>) -> Result<()> {
+    async fn send_echo_reply(
+        &mut self,
+        params: &Value,
+        id: Option<&rovs_jsonrpc::RpcId>,
+    ) -> Result<()> {
         use rovs_jsonrpc::{Message, Response, RpcId};
 
-        let response_id = id.cloned().unwrap_or_else(|| RpcId::String("echo".to_owned()));
+        let response_id = id
+            .cloned()
+            .unwrap_or_else(|| RpcId::String("echo".to_owned()));
         let response = Response::success(response_id, params.clone());
         self.conn.send_message(&Message::Response(response)).await?;
         Ok(())

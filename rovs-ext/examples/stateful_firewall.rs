@@ -27,7 +27,7 @@
 #![allow(clippy::items_after_statements)]
 
 use rovs_openflow::oxm::ct_state;
-use rovs_openflow::{ActionList, Flow, Match, VConn, CT_COMMIT};
+use rovs_openflow::{ActionList, CT_COMMIT, Flow, Match, VConn};
 use rovs_transport::Address;
 
 fn get_openflow_addr() -> Address {
@@ -174,7 +174,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .actions(ActionList::new().ct(CT_COMMIT, CT_ZONE, Some(2)));
 
     conn.send_flow_sync(&allow_outbound_new_ipv4).await?;
-    println!("  Added: in_port={INTERNAL_PORT}, eth_type=IPv4, ct_state=+trk+new -> ct(commit, table=2)");
+    println!(
+        "  Added: in_port={INTERNAL_PORT}, eth_type=IPv4, ct_state=+trk+new -> ct(commit, table=2)"
+    );
 
     // 4b: IPv6 outbound
     let allow_outbound_new_ipv6 = Flow::add()
@@ -189,7 +191,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .actions(ActionList::new().ct(CT_COMMIT, CT_ZONE, Some(2)));
 
     conn.send_flow_sync(&allow_outbound_new_ipv6).await?;
-    println!("  Added: in_port={INTERNAL_PORT}, eth_type=IPv6, ct_state=+trk+new -> ct(commit, table=2)");
+    println!(
+        "  Added: in_port={INTERNAL_PORT}, eth_type=IPv6, ct_state=+trk+new -> ct(commit, table=2)"
+    );
 
     // Rule 5: Allow specific inbound services (example: SSH on port 22)
     let allow_ssh_inbound = Flow::add()
@@ -206,7 +210,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .actions(ActionList::new().ct(CT_COMMIT, CT_ZONE, Some(2)));
 
     conn.send_flow_sync(&allow_ssh_inbound).await?;
-    println!("  Added: in_port={EXTERNAL_PORT}, tcp_dst=22, ct_state=+trk+new -> ct(commit, zone={CT_ZONE}, table=2)");
+    println!(
+        "  Added: in_port={EXTERNAL_PORT}, tcp_dst=22, ct_state=+trk+new -> ct(commit, zone={CT_ZONE}, table=2)"
+    );
 
     // Rule 6: Allow ICMP echo requests (ping) inbound
     let allow_ping_inbound = Flow::add()
@@ -223,7 +229,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .actions(ActionList::new().ct(CT_COMMIT, CT_ZONE, Some(2)));
 
     conn.send_flow_sync(&allow_ping_inbound).await?;
-    println!("  Added: in_port={EXTERNAL_PORT}, icmp_type=8, ct_state=+trk+new -> ct(commit, zone={CT_ZONE}, table=2)");
+    println!(
+        "  Added: in_port={EXTERNAL_PORT}, icmp_type=8, ct_state=+trk+new -> ct(commit, zone={CT_ZONE}, table=2)"
+    );
 
     // Default: drop all other new inbound connections
     let drop_inbound_new = Flow::add()
@@ -237,7 +245,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .actions(ActionList::new().drop());
 
     conn.send_flow_sync(&drop_inbound_new).await?;
-    println!("  Added: in_port={EXTERNAL_PORT}, ct_state=+trk+new -> DROP (block unsolicited inbound)");
+    println!(
+        "  Added: in_port={EXTERNAL_PORT}, ct_state=+trk+new -> DROP (block unsolicited inbound)"
+    );
 
     // Default table 1: drop
     let drop_default_t1 = Flow::add()

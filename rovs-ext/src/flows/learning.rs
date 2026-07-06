@@ -3,7 +3,7 @@
 //! Provides flow builders for implementing a basic MAC learning switch
 //! using the NxLearn action.
 
-use rovs_openflow::{nxm, ActionList, Flow, NxLearn, VConn};
+use rovs_openflow::{ActionList, Flow, NxLearn, VConn, nxm};
 
 use crate::Result;
 

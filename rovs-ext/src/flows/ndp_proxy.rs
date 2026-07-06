@@ -104,15 +104,13 @@ impl NdpProxyFlows {
 
     /// Delete NDP proxy flows from the switch.
     pub async fn delete(&self, conn: &mut VConn, table: u8) -> Result<()> {
-        let delete = Flow::delete()
-            .table(table)
-            .match_fields(
-                Match::new()
-                    .in_port(self.config.port)
-                    .eth_type(0x86dd)
-                    .ip_proto(58)
-                    .icmpv6_type(135),
-            );
+        let delete = Flow::delete().table(table).match_fields(
+            Match::new()
+                .in_port(self.config.port)
+                .eth_type(0x86dd)
+                .ip_proto(58)
+                .icmpv6_type(135),
+        );
         conn.send_flow_sync(&delete).await?;
         Ok(())
     }

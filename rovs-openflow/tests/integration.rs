@@ -1,7 +1,7 @@
 //! Integration tests for rovs-openflow.
 //!
-//! These tests require a running OVS with ovs-vswitchd and OpenFlow enabled.
-//! Set the `OPENFLOW_ADDR` environment variable to the OpenFlow address
+//! These tests require a running OVS with ovs-vswitchd and `OpenFlow` enabled.
+//! Set the `OPENFLOW_ADDR` environment variable to the `OpenFlow` address
 //! (e.g., `tcp:127.0.0.1:6653`).
 //!
 //! Run these tests with:
@@ -15,7 +15,7 @@
 //! OPENFLOW_ADDR=tcp:127.0.0.1:6653 cargo test -p rovs-openflow -- --ignored
 //! ```
 
-use rovs_openflow::{nxm, ActionList, Flow, Match, NxLearn, VConn, CT_COMMIT};
+use rovs_openflow::{ActionList, CT_COMMIT, Flow, Match, NxLearn, VConn, nxm};
 use rovs_transport::Address;
 
 fn get_openflow_addr() -> Option<Address> {
@@ -32,7 +32,7 @@ async fn connect_and_handshake() {
 
     // Verify we negotiated a version
     let version = conn.version();
-    println!("Negotiated OpenFlow version: {:?}", version);
+    println!("Negotiated OpenFlow version: {version:?}");
 }
 
 #[tokio::test]
@@ -103,13 +103,11 @@ async fn add_flow_with_ip_match() {
         .expect("Failed to add flow");
 
     // Clean up
-    let delete_flow = Flow::delete()
-        .priority(200)
-        .match_fields(
-            Match::new()
-                .eth_type(0x0800)
-                .ipv4_dst("10.0.0.0".parse().unwrap(), 24),
-        );
+    let delete_flow = Flow::delete().priority(200).match_fields(
+        Match::new()
+            .eth_type(0x0800)
+            .ipv4_dst("10.0.0.0".parse().unwrap(), 24),
+    );
 
     conn.send_flow_sync(&delete_flow)
         .await
@@ -128,7 +126,7 @@ async fn add_flow_with_tcp_match() {
         .match_fields(
             Match::new()
                 .eth_type(0x0800) // IPv4
-                .ip_proto(6)      // TCP
+                .ip_proto(6) // TCP
                 .tcp_dst(80),
         )
         .actions(ActionList::new().output(1));
@@ -140,12 +138,7 @@ async fn add_flow_with_tcp_match() {
     // Clean up
     let delete_flow = Flow::delete()
         .priority(300)
-        .match_fields(
-            Match::new()
-                .eth_type(0x0800)
-                .ip_proto(6)
-                .tcp_dst(80),
-        );
+        .match_fields(Match::new().eth_type(0x0800).ip_proto(6).tcp_dst(80));
 
     conn.send_flow_sync(&delete_flow)
         .await
@@ -169,8 +162,7 @@ async fn delete_flow_by_match() {
         .expect("Failed to add flow");
 
     // Delete the flow using Delete (not DeleteStrict)
-    let delete_flow = Flow::delete()
-        .match_fields(Match::new().in_port(3));
+    let delete_flow = Flow::delete().match_fields(Match::new().in_port(3));
 
     conn.send_flow_sync(&delete_flow)
         .await
@@ -187,15 +179,9 @@ async fn add_flow_with_vlan() {
     let flow = Flow::add()
         .priority(250)
         .match_fields(
-            Match::new()
-                .in_port(1)
-                .vlan_vid(100), // VLAN 100
+            Match::new().in_port(1).vlan_vid(100), // VLAN 100
         )
-        .actions(
-            ActionList::new()
-                .pop_vlan()
-                .output(2),
-        );
+        .actions(ActionList::new().pop_vlan().output(2));
 
     conn.send_flow_sync(&flow)
         .await
@@ -204,11 +190,7 @@ async fn add_flow_with_vlan() {
     // Clean up
     let delete_flow = Flow::delete()
         .priority(250)
-        .match_fields(
-            Match::new()
-                .in_port(1)
-                .vlan_vid(100),
-        );
+        .match_fields(Match::new().in_port(1).vlan_vid(100));
 
     conn.send_flow_sync(&delete_flow)
         .await
@@ -255,15 +237,9 @@ async fn add_flow_with_dec_ttl() {
     let flow = Flow::add()
         .priority(400)
         .match_fields(
-            Match::new()
-                .in_port(1)
-                .eth_type(0x0800), // IPv4
+            Match::new().in_port(1).eth_type(0x0800), // IPv4
         )
-        .actions(
-            ActionList::new()
-                .dec_ttl()
-                .output(2),
-        );
+        .actions(ActionList::new().dec_ttl().output(2));
 
     conn.send_flow_sync(&flow)
         .await
@@ -272,11 +248,7 @@ async fn add_flow_with_dec_ttl() {
     // Clean up
     let delete_flow = Flow::delete()
         .priority(400)
-        .match_fields(
-            Match::new()
-                .in_port(1)
-                .eth_type(0x0800),
-        );
+        .match_fields(Match::new().in_port(1).eth_type(0x0800));
 
     conn.send_flow_sync(&delete_flow)
         .await
@@ -292,7 +264,7 @@ async fn add_flow_with_timeout() {
     // Create flow with idle and hard timeout
     let flow = Flow::add()
         .priority(175)
-        .idle_timeout(60)  // 60 seconds
+        .idle_timeout(60) // 60 seconds
         .hard_timeout(300) // 5 minutes
         .match_fields(Match::new().in_port(1))
         .actions(ActionList::new().output(2));
@@ -348,24 +320,24 @@ async fn multiple_flows_sequential() {
     // Add multiple flows
     for port in 1..=5u32 {
         let flow = Flow::add()
-            .priority(100 + port as u16)
+            .priority(100 + u16::try_from(port).unwrap())
             .match_fields(Match::new().in_port(port))
             .actions(ActionList::new().output(port + 10));
 
         conn.send_flow_sync(&flow)
             .await
-            .unwrap_or_else(|_| panic!("Failed to add flow for port {}", port));
+            .unwrap_or_else(|_| panic!("Failed to add flow for port {port}"));
     }
 
     // Delete all flows
     for port in 1..=5u32 {
         let delete_flow = Flow::delete()
-            .priority(100 + port as u16)
+            .priority(100 + u16::try_from(port).unwrap())
             .match_fields(Match::new().in_port(port));
 
         conn.send_flow_sync(&delete_flow)
             .await
-            .unwrap_or_else(|_| panic!("Failed to delete flow for port {}", port));
+            .unwrap_or_else(|_| panic!("Failed to delete flow for port {port}"));
     }
 }
 
@@ -379,7 +351,7 @@ async fn delete_all_flows_in_table() {
     for i in 1..=3u32 {
         let flow = Flow::add()
             .table(2)
-            .priority(100 + i as u16)
+            .priority(100 + u16::try_from(i).unwrap())
             .match_fields(Match::new().in_port(i))
             .actions(ActionList::new().output(i + 10));
 
@@ -389,8 +361,7 @@ async fn delete_all_flows_in_table() {
     }
 
     // Delete all flows in table 2
-    let delete_all = Flow::delete()
-        .table(2);
+    let delete_all = Flow::delete().table(2);
 
     conn.send_flow_sync(&delete_all)
         .await
@@ -416,11 +387,7 @@ async fn add_flow_with_learn_action() {
         .table(0)
         .priority(500)
         .match_fields(Match::new().in_port(1))
-        .actions(
-            ActionList::new()
-                .learn(learn)
-                .output(2),
-        );
+        .actions(ActionList::new().learn(learn).output(2));
 
     conn.send_flow_sync(&flow)
         .await
@@ -491,9 +458,7 @@ async fn add_flow_with_ct_commit() {
         .table(0)
         .priority(550)
         .match_fields(
-            Match::new()
-                .in_port(1)
-                .eth_type(0x0800), // IPv4
+            Match::new().in_port(1).eth_type(0x0800), // IPv4
         )
         .actions(
             ActionList::new()
@@ -509,11 +474,7 @@ async fn add_flow_with_ct_commit() {
     let delete_flow = Flow::delete()
         .table(0)
         .priority(550)
-        .match_fields(
-            Match::new()
-                .in_port(1)
-                .eth_type(0x0800),
-        );
+        .match_fields(Match::new().in_port(1).eth_type(0x0800));
 
     conn.send_flow_sync(&delete_flow)
         .await
@@ -531,9 +492,7 @@ async fn add_flow_with_ct_and_recirc() {
         .table(0)
         .priority(600)
         .match_fields(
-            Match::new()
-                .in_port(1)
-                .eth_type(0x0800), // IPv4
+            Match::new().in_port(1).eth_type(0x0800), // IPv4
         )
         .actions(ActionList::new().ct(CT_COMMIT, 100, Some(1)));
 
@@ -556,11 +515,7 @@ async fn add_flow_with_ct_and_recirc() {
     let delete_flow = Flow::delete()
         .table(0)
         .priority(600)
-        .match_fields(
-            Match::new()
-                .in_port(1)
-                .eth_type(0x0800),
-        );
+        .match_fields(Match::new().in_port(1).eth_type(0x0800));
 
     conn.send_flow_sync(&delete_flow)
         .await
@@ -586,16 +541,8 @@ async fn add_flow_with_mac_translation() {
     let flow_src_rewrite = Flow::add()
         .table(3)
         .priority(100)
-        .match_fields(
-            Match::new()
-                .in_port(1)
-                .eth_src(internal_mac),
-        )
-        .actions(
-            ActionList::new()
-                .set_eth_src(external_mac)
-                .output(2),
-        );
+        .match_fields(Match::new().in_port(1).eth_src(internal_mac))
+        .actions(ActionList::new().set_eth_src(external_mac).output(2));
 
     conn.send_flow_sync(&flow_src_rewrite)
         .await
@@ -605,16 +552,8 @@ async fn add_flow_with_mac_translation() {
     let flow_dst_rewrite = Flow::add()
         .table(3)
         .priority(100)
-        .match_fields(
-            Match::new()
-                .in_port(2)
-                .eth_dst(external_mac),
-        )
-        .actions(
-            ActionList::new()
-                .set_eth_dst(internal_mac)
-                .output(1),
-        );
+        .match_fields(Match::new().in_port(2).eth_dst(external_mac))
+        .actions(ActionList::new().set_eth_dst(internal_mac).output(1));
 
     conn.send_flow_sync(&flow_dst_rewrite)
         .await
@@ -636,15 +575,15 @@ async fn add_flow_with_arp_proxy_actions() {
     // Test NxMove and NxRegLoad actions for ARP proxy
     // This matches ARP requests and transforms them into replies
     let external_mac = [0x02, 0x00, 0x00, 0x00, 0x00, 0x99u8];
-    let external_ip: u32 = 0x0a000063; // 10.0.0.99
+    let external_ip: u32 = 0x0a00_0063; // 10.0.0.99
 
     // Convert MAC to u64 for load_field
-    let mac_u64 = ((external_mac[0] as u64) << 40)
-        | ((external_mac[1] as u64) << 32)
-        | ((external_mac[2] as u64) << 24)
-        | ((external_mac[3] as u64) << 16)
-        | ((external_mac[4] as u64) << 8)
-        | (external_mac[5] as u64);
+    let mac_u64 = (u64::from(external_mac[0]) << 40)
+        | (u64::from(external_mac[1]) << 32)
+        | (u64::from(external_mac[2]) << 24)
+        | (u64::from(external_mac[3]) << 16)
+        | (u64::from(external_mac[4]) << 8)
+        | u64::from(external_mac[5]);
 
     let flow = Flow::add()
         .table(4)
@@ -653,7 +592,7 @@ async fn add_flow_with_arp_proxy_actions() {
             Match::new()
                 .in_port(2)
                 .eth_type(0x0806) // ARP
-                .arp_op(1),       // ARP Request
+                .arp_op(1), // ARP Request
         )
         .actions(
             ActionList::new()
@@ -688,9 +627,10 @@ async fn add_flow_with_arp_proxy_actions() {
 
 #[tokio::test]
 #[ignore = "requires ovs-vswitchd"]
+#[allow(clippy::similar_names)] // ns_packet / na_packet are protocol terms
 async fn ndp_proxy_flow_and_packet_out() {
     use rovs_openflow::ndp::{build_na_reply, parse_neighbor_solicitation};
-    use rovs_openflow::{PacketOut, OFPP_CONTROLLER};
+    use rovs_openflow::{OFPP_CONTROLLER, PacketOut};
     use std::net::Ipv6Addr;
 
     let addr = get_openflow_addr().expect("OPENFLOW_ADDR not set");
@@ -716,7 +656,12 @@ async fn ndp_proxy_flow_and_packet_out() {
     let dst_ipv6: Ipv6Addr = "ff02::1:ff00:100".parse().unwrap();
 
     let ns_packet = build_test_ns_packet(
-        src_mac, dst_mac, src_ipv6, dst_ipv6, target_ipv6, Some(src_mac),
+        src_mac,
+        dst_mac,
+        src_ipv6,
+        dst_ipv6,
+        target_ipv6,
+        Some(src_mac),
     );
 
     // Verify NS packet parsing works
@@ -771,7 +716,9 @@ fn build_test_ns_packet(
     target_ipv6: std::net::Ipv6Addr,
     source_ll_addr: Option<[u8; 6]>,
 ) -> Vec<u8> {
-    use rovs_openflow::ndp::{icmpv6_checksum, ICMPV6_NEIGHBOR_SOLICITATION, NDP_OPT_SOURCE_LL_ADDR};
+    use rovs_openflow::ndp::{
+        ICMPV6_NEIGHBOR_SOLICITATION, NDP_OPT_SOURCE_LL_ADDR, icmpv6_checksum,
+    };
 
     let mut packet = Vec::with_capacity(86);
 
@@ -781,11 +728,8 @@ fn build_test_ns_packet(
     packet.extend_from_slice(&0x86ddu16.to_be_bytes()); // IPv6
 
     // Build ICMPv6 NS first to get length for IPv6 header
-    let mut icmpv6 = Vec::new();
-    icmpv6.push(ICMPV6_NEIGHBOR_SOLICITATION); // Type
-    icmpv6.push(0); // Code
-    icmpv6.push(0); // Checksum placeholder
-    icmpv6.push(0);
+    // Type, code, checksum placeholder (2 bytes)
+    let mut icmpv6 = vec![ICMPV6_NEIGHBOR_SOLICITATION, 0, 0, 0];
     icmpv6.extend_from_slice(&[0u8; 4]); // Reserved
     icmpv6.extend_from_slice(&target_ipv6.octets()); // Target
 
@@ -798,15 +742,14 @@ fn build_test_ns_packet(
 
     // Calculate checksum
     let checksum = icmpv6_checksum(&src_ipv6, &dst_ipv6, &icmpv6);
-    icmpv6[2] = (checksum >> 8) as u8;
-    icmpv6[3] = checksum as u8;
+    icmpv6[2..4].copy_from_slice(&checksum.to_be_bytes());
 
     // IPv6 header
     packet.push(0x60); // Version 6, TC high nibble = 0
     packet.push(0x00); // TC low nibble + flow label high
     packet.push(0x00); // Flow label
     packet.push(0x00); // Flow label low
-    packet.extend_from_slice(&(icmpv6.len() as u16).to_be_bytes()); // Payload length
+    packet.extend_from_slice(&u16::try_from(icmpv6.len()).unwrap().to_be_bytes()); // Payload length
     packet.push(58); // Next header = ICMPv6
     packet.push(255); // Hop limit
     packet.extend_from_slice(&src_ipv6.octets());

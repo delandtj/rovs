@@ -174,7 +174,10 @@ mod tests {
 
     #[test]
     fn parse_packet_in_reason() {
-        assert_eq!(PacketInReason::try_from(0).unwrap(), PacketInReason::NoMatch);
+        assert_eq!(
+            PacketInReason::try_from(0).unwrap(),
+            PacketInReason::NoMatch
+        );
         assert_eq!(PacketInReason::try_from(1).unwrap(), PacketInReason::Action);
         assert!(PacketInReason::try_from(99).is_err());
     }

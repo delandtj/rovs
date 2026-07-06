@@ -135,7 +135,9 @@ impl Instruction {
         let instruction = match inst_type {
             InstructionType::GotoTable => {
                 if length < 8 {
-                    return Err(crate::Error::Parse("goto_table instruction too short".into()));
+                    return Err(crate::Error::Parse(
+                        "goto_table instruction too short".into(),
+                    ));
                 }
                 let table_id = data[4];
                 Self::GotoTable(table_id)
@@ -587,9 +589,7 @@ mod tests {
     #[test]
     fn instruction_list_encode_multiple() {
         let actions = ActionList::new().output(OutputPort::Port(1));
-        let list = InstructionList::new()
-            .apply_actions(actions)
-            .goto_table(10);
+        let list = InstructionList::new().apply_actions(actions).goto_table(10);
         let bytes = list.encode();
         // ApplyActions (24) + GotoTable (8) = 32
         assert_eq!(bytes.len(), 32);
@@ -648,9 +648,7 @@ mod tests {
 
     #[test]
     fn decode_apply_actions_instruction() {
-        let actions = ActionList::new()
-            .pop_vlan()
-            .output(OutputPort::Port(2));
+        let actions = ActionList::new().pop_vlan().output(OutputPort::Port(2));
         let inst = Instruction::ApplyActions(actions);
         let encoded = inst.encode();
         let (decoded, _) = Instruction::decode(&encoded).unwrap();
@@ -700,14 +698,18 @@ mod tests {
     #[test]
     fn decode_instruction_list_multiple() {
         let actions = ActionList::new().output(OutputPort::Port(1));
-        let original = InstructionList::new()
-            .apply_actions(actions)
-            .goto_table(10);
+        let original = InstructionList::new().apply_actions(actions).goto_table(10);
         let encoded = original.encode();
         let decoded = InstructionList::decode(&encoded).unwrap();
         assert_eq!(decoded.len(), 2);
-        assert!(matches!(decoded.instructions()[0], Instruction::ApplyActions(_)));
-        assert!(matches!(decoded.instructions()[1], Instruction::GotoTable(10)));
+        assert!(matches!(
+            decoded.instructions()[0],
+            Instruction::ApplyActions(_)
+        ));
+        assert!(matches!(
+            decoded.instructions()[1],
+            Instruction::GotoTable(10)
+        ));
     }
 
     #[test]
@@ -757,12 +759,30 @@ mod tests {
 
     #[test]
     fn instruction_type_try_from() {
-        assert_eq!(InstructionType::try_from(1).unwrap(), InstructionType::GotoTable);
-        assert_eq!(InstructionType::try_from(2).unwrap(), InstructionType::WriteMetadata);
-        assert_eq!(InstructionType::try_from(3).unwrap(), InstructionType::WriteActions);
-        assert_eq!(InstructionType::try_from(4).unwrap(), InstructionType::ApplyActions);
-        assert_eq!(InstructionType::try_from(5).unwrap(), InstructionType::ClearActions);
-        assert_eq!(InstructionType::try_from(6).unwrap(), InstructionType::Meter);
+        assert_eq!(
+            InstructionType::try_from(1).unwrap(),
+            InstructionType::GotoTable
+        );
+        assert_eq!(
+            InstructionType::try_from(2).unwrap(),
+            InstructionType::WriteMetadata
+        );
+        assert_eq!(
+            InstructionType::try_from(3).unwrap(),
+            InstructionType::WriteActions
+        );
+        assert_eq!(
+            InstructionType::try_from(4).unwrap(),
+            InstructionType::ApplyActions
+        );
+        assert_eq!(
+            InstructionType::try_from(5).unwrap(),
+            InstructionType::ClearActions
+        );
+        assert_eq!(
+            InstructionType::try_from(6).unwrap(),
+            InstructionType::Meter
+        );
         assert!(InstructionType::try_from(99).is_err());
     }
 }

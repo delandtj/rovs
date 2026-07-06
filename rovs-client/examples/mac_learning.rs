@@ -13,7 +13,7 @@
 //!   # Then run the example:
 //!   OPENFLOW_ADDR=tcp:127.0.0.1:6653 cargo run --example mac_learning
 
-use rovs_openflow::{nxm, ActionList, Flow, NxLearn, VConn};
+use rovs_openflow::{ActionList, Flow, NxLearn, VConn, nxm};
 use rovs_transport::Address;
 
 fn get_openflow_addr() -> Address {
@@ -60,11 +60,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let learning_flow = Flow::add()
         .table(0)
         .priority(100)
-        .actions(
-            ActionList::new()
-                .learn(learn)
-                .goto_table(1),
-        );
+        .actions(ActionList::new().learn(learn).goto_table(1));
 
     conn.send_flow_sync(&learning_flow).await?;
     println!("  Added: table=0, priority=100, actions=learn(...),goto_table:1");

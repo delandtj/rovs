@@ -24,7 +24,7 @@
 //!   # Then run the example:
 //!   OPENFLOW_ADDR=tcp:127.0.0.1:6653 cargo run --example mac_translation
 
-use rovs_openflow::{nxm, ActionList, Flow, Match, VConn};
+use rovs_openflow::{ActionList, Flow, Match, VConn, nxm};
 use rovs_transport::Address;
 
 fn get_openflow_addr() -> Address {

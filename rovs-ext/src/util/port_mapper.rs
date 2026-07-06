@@ -188,10 +188,7 @@ mod tests {
 
     #[test]
     fn from_iterator() {
-        let pairs = vec![
-            ("eth0".to_owned(), 1),
-            ("eth1".to_owned(), 2),
-        ];
+        let pairs = vec![("eth0".to_owned(), 1), ("eth1".to_owned(), 2)];
         let mapper: PortMapper = pairs.into_iter().collect();
 
         assert_eq!(mapper.len(), 2);

@@ -139,7 +139,10 @@ impl AppCtl {
 
     /// Send a command and return the result string.
     async fn transact(&mut self, method: &str, args: &[&str]) -> Result<String> {
-        let params: Vec<Value> = args.iter().map(|s| Value::String((*s).to_owned())).collect();
+        let params: Vec<Value> = args
+            .iter()
+            .map(|s| Value::String((*s).to_owned()))
+            .collect();
         let result = self
             .conn
             .transact(method, Value::Array(params))

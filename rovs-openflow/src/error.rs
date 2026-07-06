@@ -848,26 +848,17 @@ mod tests {
 
     #[test]
     fn flow_mod_failed_codes() {
-        assert_eq!(
-            FlowModFailedCode::from(1).to_string(),
-            "table full"
-        );
+        assert_eq!(FlowModFailedCode::from(1).to_string(), "table full");
         assert_eq!(
             FlowModFailedCode::from(3).to_string(),
             "overlapping flow entry"
         );
-        assert_eq!(
-            FlowModFailedCode::from(4).to_string(),
-            "permissions error"
-        );
+        assert_eq!(FlowModFailedCode::from(4).to_string(), "permissions error");
     }
 
     #[test]
     fn bad_action_codes() {
-        assert_eq!(
-            BadActionCode::from(0).to_string(),
-            "unknown action type"
-        );
+        assert_eq!(BadActionCode::from(0).to_string(), "unknown action type");
         assert_eq!(
             BadActionCode::from(4).to_string(),
             "problem validating output port"
@@ -876,10 +867,7 @@ mod tests {
 
     #[test]
     fn bad_match_codes() {
-        assert_eq!(
-            BadMatchCode::from(9).to_string(),
-            "prerequisite not met"
-        );
+        assert_eq!(BadMatchCode::from(9).to_string(), "prerequisite not met");
         assert_eq!(
             BadMatchCode::from(10).to_string(),
             "field appeared more than once"

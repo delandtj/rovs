@@ -9,9 +9,9 @@ use std::net::Ipv6Addr;
 use rovs_openflow::ndp::{build_na_reply, parse_neighbor_solicitation};
 use rovs_openflow::{ActionList, PacketOut};
 
+use crate::Result;
 use crate::controller::event::PacketInEvent;
 use crate::controller::handler::{HandlerAction, HandlerContext, PacketHandler};
-use crate::Result;
 
 /// NDP proxy handler.
 ///
@@ -91,8 +91,12 @@ impl PacketHandler for NdpProxyHandler {
             tracing::debug!(
                 "NDP proxy: {} -> {:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}",
                 ns.target_addr,
-                reply_mac[0], reply_mac[1], reply_mac[2],
-                reply_mac[3], reply_mac[4], reply_mac[5]
+                reply_mac[0],
+                reply_mac[1],
+                reply_mac[2],
+                reply_mac[3],
+                reply_mac[4],
+                reply_mac[5]
             );
 
             // Build Neighbor Advertisement reply
@@ -116,7 +120,10 @@ mod tests {
     #[test]
     fn handler_has_entry() {
         let mut handler = NdpProxyHandler::new();
-        handler.add_entry("fd00::99".parse().unwrap(), [0x02, 0x00, 0x00, 0x00, 0x00, 0x99]);
+        handler.add_entry(
+            "fd00::99".parse().unwrap(),
+            [0x02, 0x00, 0x00, 0x00, 0x00, 0x99],
+        );
 
         assert!(handler.has_entry(&"fd00::99".parse().unwrap()));
         assert!(!handler.has_entry(&"fd00::100".parse().unwrap()));

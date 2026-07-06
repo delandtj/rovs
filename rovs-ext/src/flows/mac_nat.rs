@@ -9,8 +9,8 @@
 
 use rovs_openflow::{ActionList, Flow, Match, VConn};
 
-use crate::util::mac_to_u64;
 use crate::Result;
+use crate::util::mac_to_u64;
 
 /// Configuration for MAC NAT flows.
 #[derive(Debug, Clone)]
@@ -230,23 +230,19 @@ impl MacNatFlows {
     /// Note: This deletes flows matching the internal/external ports and MACs.
     pub async fn delete(&self, conn: &mut VConn, table: u8) -> Result<()> {
         // Delete outbound flows
-        let delete_outbound = Flow::delete()
-            .table(table)
-            .match_fields(
-                Match::new()
-                    .in_port(self.config.internal_port)
-                    .eth_src(self.config.internal_mac),
-            );
+        let delete_outbound = Flow::delete().table(table).match_fields(
+            Match::new()
+                .in_port(self.config.internal_port)
+                .eth_src(self.config.internal_mac),
+        );
         conn.send_flow_sync(&delete_outbound).await?;
 
         // Delete inbound flows
-        let delete_inbound = Flow::delete()
-            .table(table)
-            .match_fields(
-                Match::new()
-                    .in_port(self.config.external_port)
-                    .eth_dst(self.config.external_mac),
-            );
+        let delete_inbound = Flow::delete().table(table).match_fields(
+            Match::new()
+                .in_port(self.config.external_port)
+                .eth_dst(self.config.external_mac),
+        );
         conn.send_flow_sync(&delete_inbound).await?;
 
         Ok(())

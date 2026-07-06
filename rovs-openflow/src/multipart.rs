@@ -66,9 +66,7 @@ impl TryFrom<u16> for MultipartType {
             12 => Ok(Self::TableFeatures),
             13 => Ok(Self::PortDesc),
             0xffff => Ok(Self::Experimenter),
-            _ => Err(crate::Error::Parse(format!(
-                "unknown multipart type: {v}"
-            ))),
+            _ => Err(crate::Error::Parse(format!("unknown multipart type: {v}"))),
         }
     }
 }
@@ -177,11 +175,11 @@ impl FlowStatsRequest {
     /// Create a new flow stats request that matches all flows.
     pub fn new() -> Self {
         Self {
-            table_id: 0xff,   // All tables
+            table_id: 0xff, // All tables
             out_port: OFPP_ANY,
             out_group: OFPP_ANY, // OFPG_ANY has same value
             cookie: 0,
-            cookie_mask: 0,   // Match all cookies
+            cookie_mask: 0, // Match all cookies
             match_fields: Match::new(),
         }
     }
@@ -246,7 +244,12 @@ impl FlowStatsRequest {
         body.extend(header.encode());
         body.extend(self.encode());
 
-        Message::new(version, MessageType::MultipartRequest, xid, Bytes::from(body))
+        Message::new(
+            version,
+            MessageType::MultipartRequest,
+            xid,
+            Bytes::from(body),
+        )
     }
 }
 
@@ -334,16 +337,13 @@ impl FlowStatsEntry {
         let flags = u16::from_be_bytes([data[18], data[19]]);
         // data[20..24] is padding
         let cookie = u64::from_be_bytes([
-            data[24], data[25], data[26], data[27],
-            data[28], data[29], data[30], data[31],
+            data[24], data[25], data[26], data[27], data[28], data[29], data[30], data[31],
         ]);
         let packet_count = u64::from_be_bytes([
-            data[32], data[33], data[34], data[35],
-            data[36], data[37], data[38], data[39],
+            data[32], data[33], data[34], data[35], data[36], data[37], data[38], data[39],
         ]);
         let byte_count = u64::from_be_bytes([
-            data[40], data[41], data[42], data[43],
-            data[44], data[45], data[46], data[47],
+            data[40], data[41], data[42], data[43], data[44], data[45], data[46], data[47],
         ]);
 
         // Parse match

@@ -43,14 +43,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .with_env_filter(EnvFilter::from_default_env().add_directive("rovs=info".parse()?))
         .init();
 
-    let addr =
-        std::env::var("OVSDB_ADDR").unwrap_or_else(|_| "unix:/var/run/openvswitch/db.sock".to_owned());
+    let addr = std::env::var("OVSDB_ADDR")
+        .unwrap_or_else(|_| "unix:/var/run/openvswitch/db.sock".to_owned());
 
     println!("=== Dual Bridge VLAN Example ===\n");
     println!("Connecting to OVSDB at: {}", addr);
 
     let mut client = Client::connect(&addr).await?;
-    println!("Connected to OVSDB v{}", client.schema().map(|s| s.version.as_str()).unwrap_or("?"));
+    println!(
+        "Connected to OVSDB v{}",
+        client.schema().map(|s| s.version.as_str()).unwrap_or("?")
+    );
 
     // Check if veth exists (informational only)
     let veth_exists = std::fs::metadata(format!("/sys/class/net/{}", VETH_NAME)).is_ok();
@@ -281,7 +284,8 @@ async fn commit_and_wait(
 
 async fn cleanup_bridges(_client: &mut Client) -> Result<(), Box<dyn std::error::Error>> {
     // Use ovs-vsctl for cleanup - it handles referential integrity correctly
-    let addr = std::env::var("OVSDB_ADDR").unwrap_or_else(|_| "unix:/var/run/openvswitch/db.sock".to_owned());
+    let addr = std::env::var("OVSDB_ADDR")
+        .unwrap_or_else(|_| "unix:/var/run/openvswitch/db.sock".to_owned());
     let db_arg = format!("--db={}", addr);
 
     for bridge in [BR_EXT, BR_INT] {

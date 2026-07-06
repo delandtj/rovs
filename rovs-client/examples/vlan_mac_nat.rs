@@ -26,7 +26,7 @@
 //!   # Cleanup after testing:
 //!   ovs-vsctl --db=tcp:127.0.0.1:6640 del-br br-nat
 
-use rovs_openflow::{nxm, ActionList, Flow, Match, VConn};
+use rovs_openflow::{ActionList, Flow, Match, VConn, nxm};
 use rovs_ovsdb::{Client, Transaction};
 use rovs_transport::Address;
 
@@ -134,10 +134,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         // Add VLAN access port
         txn.add_vlan_port(BRIDGE_NAME, VLAN_PORT, VLAN_TAG);
-        println!(
-            "Adding VLAN port '{}' with tag {}...",
-            VLAN_PORT, VLAN_TAG
-        );
+        println!("Adding VLAN port '{}' with tag {}...", VLAN_PORT, VLAN_TAG);
 
         // Commit transaction
         match client.commit(&mut txn).await {
@@ -221,7 +218,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             Match::new()
                 .in_port(PORT_ENO1)
                 .eth_type(0x0806) // ARP
-                .arp_op(1)        // ARP Request
+                .arp_op(1) // ARP Request
                 .arp_tpa(EXTERNAL_IPV4),
         )
         .actions(
@@ -263,9 +260,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .table(0)
         .priority(300)
         .match_fields(
-            Match::new()
-                .in_port(PORT_ENO1)
-                .icmpv6_type(135), // Neighbor Solicitation (sets eth_type and ip_proto)
+            Match::new().in_port(PORT_ENO1).icmpv6_type(135), // Neighbor Solicitation (sets eth_type and ip_proto)
         )
         .actions(
             ActionList::new()
@@ -468,8 +463,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("\nMAC NAT:");
     println!("  Internal: {}", format_mac(&INTERNAL_MAC));
     println!("  External: {}", format_mac(&EXTERNAL_MAC));
-    println!("\nARP Proxy: {} -> {}", format_ipv4(&EXTERNAL_IPV4), format_mac(&EXTERNAL_MAC));
-    println!("NDP Proxy: {} (via controller)", format_ipv6(&EXTERNAL_IPV6));
+    println!(
+        "\nARP Proxy: {} -> {}",
+        format_ipv4(&EXTERNAL_IPV4),
+        format_mac(&EXTERNAL_MAC)
+    );
+    println!(
+        "NDP Proxy: {} (via controller)",
+        format_ipv6(&EXTERNAL_IPV6)
+    );
     println!("\nTo verify:");
     println!("  ovs-vsctl show");
     println!("  ovs-ofctl dump-flows {} -O OpenFlow13", BRIDGE_NAME);

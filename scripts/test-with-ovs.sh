@@ -94,7 +94,8 @@ run_unit_tests() {
 run_integration_tests() {
     log_info "Running integration tests..."
     # --test-threads=1 avoids database-level race conditions (cleanup patterns could match other tests' resources)
-    OVSDB_ADDR="tcp:127.0.0.1:$OVSDB_PORT" cargo test -- --ignored --test-threads=1
+    # rovs-openflow is excluded: its tests need OPENFLOW_ADDR and a running vswitchd (see run_openflow_tests)
+    OVSDB_ADDR="tcp:127.0.0.1:$OVSDB_PORT" cargo test --workspace --exclude rovs-openflow -- --ignored --test-threads=1
 }
 
 run_examples() {
@@ -159,6 +160,7 @@ case "${1:-all}" in
         build_image
         start_container "full"
         run_integration_tests
+        run_openflow_tests
         run_examples
         ;;
     openflow)

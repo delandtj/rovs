@@ -31,6 +31,22 @@ fn get_ovsdb_addr() -> Option<String> {
     std::env::var("OVSDB_ADDR").ok()
 }
 
+/// Barrier: make the IDL reflect all transactions committed so far.
+///
+/// `wait()` returns on ANY update notification. With ovs-vswitchd running,
+/// the database sees constant unrelated statistics updates, so a single
+/// `wait()` after commit is not a reliable barrier. Instead, round-trip a
+/// no-op transact (the server queues monitor updates for a commit before it
+/// replies to later requests on the same connection) and then apply
+/// everything that was buffered during the round trip.
+async fn sync(client: &mut Client) {
+    client
+        .transact(json!([]))
+        .await
+        .expect("sync transact failed");
+    client.run().await.expect("sync run failed");
+}
+
 #[tokio::test]
 #[ignore = "requires OVSDB server"]
 async fn connect_and_fetch_schema() {
@@ -68,7 +84,7 @@ async fn create_and_delete_bridge() {
     assert!(txn.get_uuid(&extract_name(&iface_ref)).is_some());
 
     // Wait for update
-    client.wait().await.expect("Wait failed");
+    sync(&mut client).await;
 
     // Verify bridge exists in IDL
     let bridge = client
@@ -103,7 +119,7 @@ async fn create_and_delete_bridge() {
     assert!(del_success, "Delete transaction should succeed");
 
     // Wait for update
-    client.wait().await.expect("Wait failed");
+    sync(&mut client).await;
 
     // Verify bridge is gone
     let bridge = client
@@ -126,14 +142,14 @@ async fn add_port_to_bridge() {
     let mut txn = Transaction::new("Open_vSwitch");
     txn.create_bridge(&bridge_name);
     client.commit(&mut txn).await.expect("Create bridge failed");
-    client.wait().await.unwrap();
+    sync(&mut client).await;
 
     // Add internal port
     let mut txn2 = Transaction::new("Open_vSwitch");
     txn2.add_internal_port(&bridge_name, &port_name);
     let success = client.commit(&mut txn2).await.expect("Add port failed");
     assert!(success);
-    client.wait().await.unwrap();
+    sync(&mut client).await;
 
     // Verify port exists
     let port = client
@@ -159,7 +175,7 @@ async fn add_vlan_port() {
     txn.create_bridge(&bridge_name);
     txn.add_vlan_port(&bridge_name, "vlan100", 100);
     client.commit(&mut txn).await.expect("Create bridge failed");
-    client.wait().await.unwrap();
+    sync(&mut client).await;
 
     // Verify VLAN port has correct tag
     let port = client
@@ -190,7 +206,7 @@ async fn create_patch_ports() {
 
     let success = client.commit(&mut txn).await.expect("Commit failed");
     assert!(success);
-    client.wait().await.unwrap();
+    sync(&mut client).await;
 
     // Verify patch interfaces exist
     let patch_ifaces: Vec<_> = client
@@ -220,7 +236,7 @@ async fn transaction_error_on_duplicate_name() {
     let mut txn = Transaction::new("Open_vSwitch");
     txn.create_bridge(&bridge_name);
     client.commit(&mut txn).await.expect("Create bridge failed");
-    client.wait().await.unwrap();
+    sync(&mut client).await;
 
     // Try to create duplicate bridge - should fail
     let mut txn2 = Transaction::new("Open_vSwitch");
@@ -337,7 +353,7 @@ async fn connect_with_custom_config() {
     txn.create_bridge(&bridge_name);
     let success = client.commit(&mut txn).await.expect("Commit failed");
     assert!(success);
-    client.wait().await.unwrap();
+    sync(&mut client).await;
 
     let bridge = client
         .idl()
@@ -416,7 +432,7 @@ async fn change_seqno_increments_on_update() {
     let mut txn = Transaction::new("Open_vSwitch");
     txn.create_bridge(&bridge_name);
     client.commit(&mut txn).await.expect("Commit failed");
-    client.wait().await.unwrap();
+    sync(&mut client).await;
 
     let seqno_after = client.idl().change_seqno();
     assert!(
@@ -437,7 +453,7 @@ async fn idl_row_lookup_by_uuid() {
     let mut txn = Transaction::new("Open_vSwitch");
     txn.create_bridge(&bridge_name);
     client.commit(&mut txn).await.expect("Commit failed");
-    client.wait().await.unwrap();
+    sync(&mut client).await;
 
     // Find bridge UUID via rows iterator
     let bridge_uuid = client
@@ -473,7 +489,7 @@ async fn row_get_raw_value() {
     let mut txn = Transaction::new("Open_vSwitch");
     txn.create_bridge(&bridge_name);
     client.commit(&mut txn).await.expect("Commit failed");
-    client.wait().await.unwrap();
+    sync(&mut client).await;
 
     let bridge = client
         .idl()
@@ -503,7 +519,7 @@ async fn row_get_typed_accessors() {
     txn.create_bridge(&bridge_name);
     txn.add_vlan_port(&bridge_name, &format!("vl-{}", short_id()), 42);
     client.commit(&mut txn).await.expect("Commit failed");
-    client.wait().await.unwrap();
+    sync(&mut client).await;
 
     // String accessor on bridge name
     let bridge = client
@@ -539,7 +555,10 @@ async fn schema_table_and_column_lookup() {
 
     // Bridge table exists and has name column
     let bridge_table = schema.table("Bridge");
-    assert!(bridge_table.is_some(), "Bridge table should exist in schema");
+    assert!(
+        bridge_table.is_some(),
+        "Bridge table should exist in schema"
+    );
     let bridge_table = bridge_table.unwrap();
     assert!(
         bridge_table.column("name").is_some(),
@@ -580,7 +599,7 @@ async fn mutate_by_uuid_add_external_id() {
     let mut txn = Transaction::new("Open_vSwitch");
     txn.create_bridge(&bridge_name);
     client.commit(&mut txn).await.expect("Commit failed");
-    client.wait().await.unwrap();
+    sync(&mut client).await;
 
     let bridge_uuid = client
         .idl()
@@ -602,7 +621,7 @@ async fn mutate_by_uuid_add_external_id() {
     );
     let success = client.commit(&mut mtxn).await.expect("Mutate failed");
     assert!(success);
-    client.wait().await.unwrap();
+    sync(&mut client).await;
 
     // Verify in IDL
     let bridge = client
@@ -626,7 +645,7 @@ async fn mutate_by_name_add_external_id() {
     let mut txn = Transaction::new("Open_vSwitch");
     txn.create_bridge(&bridge_name);
     client.commit(&mut txn).await.expect("Commit failed");
-    client.wait().await.unwrap();
+    sync(&mut client).await;
 
     // Mutate by name
     let mut mtxn = Transaction::new("Open_vSwitch");
@@ -641,7 +660,7 @@ async fn mutate_by_name_add_external_id() {
     );
     let success = client.commit(&mut mtxn).await.expect("Mutate failed");
     assert!(success);
-    client.wait().await.unwrap();
+    sync(&mut client).await;
 
     let bridge = client
         .idl()
@@ -673,7 +692,7 @@ async fn mutate_where_singleton_table() {
     );
     let success = client.commit(&mut txn).await.expect("Mutate failed");
     assert!(success);
-    client.wait().await.unwrap();
+    sync(&mut client).await;
 
     // Verify
     let ovs_row = client.idl().rows("Open_vSwitch").next();
@@ -707,7 +726,7 @@ async fn update_by_uuid() {
     let mut txn = Transaction::new("Open_vSwitch");
     txn.create_bridge(&bridge_name);
     client.commit(&mut txn).await.expect("Commit failed");
-    client.wait().await.unwrap();
+    sync(&mut client).await;
 
     let bridge_uuid = client
         .idl()
@@ -721,7 +740,7 @@ async fn update_by_uuid() {
     utxn.update("Bridge", bridge_uuid, json!({"fail_mode": "secure"}));
     let success = client.commit(&mut utxn).await.expect("Update failed");
     assert!(success);
-    client.wait().await.unwrap();
+    sync(&mut client).await;
 
     let bridge = client
         .idl()
@@ -743,14 +762,14 @@ async fn update_by_name() {
     let mut txn = Transaction::new("Open_vSwitch");
     txn.create_bridge(&bridge_name);
     client.commit(&mut txn).await.expect("Commit failed");
-    client.wait().await.unwrap();
+    sync(&mut client).await;
 
     // Update by name
     let mut utxn = Transaction::new("Open_vSwitch");
     utxn.update_by_name("Bridge", &bridge_name, json!({"fail_mode": "standalone"}));
     let success = client.commit(&mut utxn).await.expect("Update failed");
     assert!(success);
-    client.wait().await.unwrap();
+    sync(&mut client).await;
 
     let bridge = client
         .idl()
@@ -778,7 +797,7 @@ async fn delete_where_by_condition() {
     txn.create_bridge(&bridge_name);
     txn.add_internal_port(&bridge_name, &port_name);
     client.commit(&mut txn).await.expect("Commit failed");
-    client.wait().await.unwrap();
+    sync(&mut client).await;
 
     // Delete interface by condition (name match)
     let mut dtxn = Transaction::new("Open_vSwitch");
@@ -809,7 +828,7 @@ async fn delete_port_by_uuid() {
     txn.create_bridge(&bridge_name);
     txn.add_internal_port(&bridge_name, &port_name);
     client.commit(&mut txn).await.expect("Commit failed");
-    client.wait().await.unwrap();
+    sync(&mut client).await;
 
     let bridge_uuid = client
         .idl()
@@ -835,7 +854,7 @@ async fn delete_port_by_uuid() {
     dtxn.delete_port_uuid(bridge_uuid, port_uuid, iface_uuid);
     let success = client.commit(&mut dtxn).await.expect("Delete port failed");
     assert!(success);
-    client.wait().await.unwrap();
+    sync(&mut client).await;
 
     // Port should be gone, bridge should still exist
     let port = client
@@ -866,7 +885,7 @@ async fn delete_port_by_name() {
     txn.create_bridge(&bridge_name);
     txn.add_internal_port(&bridge_name, &port_name);
     client.commit(&mut txn).await.expect("Commit failed");
-    client.wait().await.unwrap();
+    sync(&mut client).await;
 
     // Delete port by name (simple version — may fail on refs but exercises the API)
     let mut dtxn = Transaction::new("Open_vSwitch");
@@ -893,7 +912,7 @@ async fn set_controller_on_bridge() {
     txn.set_controller(&bridge_name, "tcp:127.0.0.1:6653");
     let success = client.commit(&mut txn).await.expect("Commit failed");
     assert!(success);
-    client.wait().await.unwrap();
+    sync(&mut client).await;
 
     // Verify controller exists
     let controller = client
@@ -928,7 +947,7 @@ async fn raw_transact_select() {
     let mut txn = Transaction::new("Open_vSwitch");
     txn.create_bridge(&bridge_name);
     client.commit(&mut txn).await.expect("Commit failed");
-    client.wait().await.unwrap();
+    sync(&mut client).await;
 
     // Raw select query
     let result = client
@@ -963,7 +982,7 @@ async fn transaction_comment() {
     txn.create_bridge(&bridge_name);
     let success = client.commit(&mut txn).await.expect("Commit failed");
     assert!(success, "Comment should not break transaction");
-    client.wait().await.unwrap();
+    sync(&mut client).await;
 
     let bridge = client
         .idl()
@@ -984,7 +1003,7 @@ async fn transaction_wait_operation() {
     let mut txn = Transaction::new("Open_vSwitch");
     txn.create_bridge(&bridge_name);
     client.commit(&mut txn).await.expect("Commit failed");
-    client.wait().await.unwrap();
+    sync(&mut client).await;
 
     // Wait on a condition that IS met (bridge exists with this name)
     let mut wtxn = Transaction::new("Open_vSwitch");
@@ -1052,7 +1071,9 @@ async fn cancel_monitor_stops_updates() {
         .expect("cancel_monitor should succeed");
 
     // Create a bridge via a second client (so it doesn't go through our canceled monitor)
-    let mut client2 = Client::connect(&addr).await.expect("Failed to connect client2");
+    let mut client2 = Client::connect(&addr)
+        .await
+        .expect("Failed to connect client2");
     let mut txn = Transaction::new("Open_vSwitch");
     txn.create_bridge(&bridge_name);
     client2.commit(&mut txn).await.expect("Commit failed");
@@ -1136,8 +1157,11 @@ async fn multiple_bridges_single_transaction() {
         txn.create_bridge(name);
     }
     let success = client.commit(&mut txn).await.expect("Commit failed");
-    assert!(success, "Multi-bridge transaction should succeed atomically");
-    client.wait().await.unwrap();
+    assert!(
+        success,
+        "Multi-bridge transaction should succeed atomically"
+    );
+    sync(&mut client).await;
 
     // All 3 should exist
     for name in &names {

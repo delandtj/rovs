@@ -41,8 +41,8 @@
 use bytes::Bytes;
 
 use crate::action::NICIRA_VENDOR_ID;
-use crate::multipart::{MultipartHeader, MultipartType};
 use crate::message::{Message, MessageType};
+use crate::multipart::{MultipartHeader, MultipartType};
 use crate::{Match, Version};
 
 /// Nicira stats subtype for flow monitor.
@@ -81,7 +81,9 @@ impl FlowUpdateEvent {
             0 => Ok(Self::Added),
             1 => Ok(Self::Deleted),
             2 => Ok(Self::Modified),
-            _ => Err(crate::Error::Parse(format!("unknown flow update event: {v}"))),
+            _ => Err(crate::Error::Parse(format!(
+                "unknown flow update event: {v}"
+            ))),
         }
     }
 }
@@ -240,7 +242,12 @@ impl FlowMonitorRequest {
         // Monitor request body
         body.extend(self.encode_body());
 
-        Message::new(version, MessageType::MultipartRequest, xid, Bytes::from(body))
+        Message::new(
+            version,
+            MessageType::MultipartRequest,
+            xid,
+            Bytes::from(body),
+        )
     }
 }
 
@@ -249,9 +256,7 @@ impl FlowMonitorRequest {
 /// Returns the parsed updates and whether the MORE flag is set.
 pub fn parse_flow_monitor_reply(body: &[u8]) -> crate::Result<(Vec<FlowUpdate>, bool)> {
     if body.len() < MultipartHeader::SIZE + 8 {
-        return Err(crate::Error::Parse(
-            "flow monitor reply too short".into(),
-        ));
+        return Err(crate::Error::Parse("flow monitor reply too short".into()));
     }
 
     // Multipart header
@@ -267,10 +272,16 @@ pub fn parse_flow_monitor_reply(body: &[u8]) -> crate::Result<(Vec<FlowUpdate>, 
 
     // Vendor header
     let vendor = u32::from_be_bytes([
-        body[offset], body[offset + 1], body[offset + 2], body[offset + 3],
+        body[offset],
+        body[offset + 1],
+        body[offset + 2],
+        body[offset + 3],
     ]);
     let subtype = u32::from_be_bytes([
-        body[offset + 4], body[offset + 5], body[offset + 6], body[offset + 7],
+        body[offset + 4],
+        body[offset + 5],
+        body[offset + 6],
+        body[offset + 7],
     ]);
 
     if vendor != NICIRA_VENDOR_ID {
@@ -301,9 +312,8 @@ pub fn parse_flow_monitor_reply(body: &[u8]) -> crate::Result<(Vec<FlowUpdate>, 
             if entry_len < 8 {
                 return Err(crate::Error::Parse("flow update abbrev too short".into()));
             }
-            let xid = u32::from_be_bytes([
-                body[pos + 4], body[pos + 5], body[pos + 6], body[pos + 7],
-            ]);
+            let xid =
+                u32::from_be_bytes([body[pos + 4], body[pos + 5], body[pos + 6], body[pos + 7]]);
             FlowUpdate::Abbrev { xid }
         } else {
             // ADDED (0), DELETED (1), MODIFIED (2)
@@ -344,8 +354,7 @@ fn parse_flow_update_full(data: &[u8], event_code: u16) -> crate::Result<FlowUpd
     let table_id = data[14];
     // data[15] is padding
     let cookie = u64::from_be_bytes([
-        data[16], data[17], data[18], data[19],
-        data[20], data[21], data[22], data[23],
+        data[16], data[17], data[18], data[19], data[20], data[21], data[22], data[23],
     ]);
 
     // Match fields (NXM/OXM TLVs, no match header)
@@ -416,8 +425,7 @@ mod tests {
 
     #[test]
     fn monitor_request_encode_body() {
-        let req = FlowMonitorRequest::new(1)
-            .flags(monitor_flags::ADD);
+        let req = FlowMonitorRequest::new(1).flags(monitor_flags::ADD);
         let body = req.encode_body();
 
         // id (4) + flags (2) + out_port (2) + match_len (2) + table_id (1) + pad (1) = 12
@@ -474,14 +482,14 @@ mod tests {
         // Flow update entry: ADDED, priority=100, table=0, no match, no actions
         let entry_len: u16 = 24; // fixed size, no match, no actions
         body.extend(entry_len.to_be_bytes()); // length
-        body.extend(0u16.to_be_bytes());      // event = ADDED
-        body.extend(0u16.to_be_bytes());      // reason
-        body.extend(100u16.to_be_bytes());    // priority
-        body.extend(0u16.to_be_bytes());      // idle_timeout
-        body.extend(0u16.to_be_bytes());      // hard_timeout
-        body.extend(0u16.to_be_bytes());      // match_len = 0
-        body.push(0);                         // table_id
-        body.push(0);                         // pad
+        body.extend(0u16.to_be_bytes()); // event = ADDED
+        body.extend(0u16.to_be_bytes()); // reason
+        body.extend(100u16.to_be_bytes()); // priority
+        body.extend(0u16.to_be_bytes()); // idle_timeout
+        body.extend(0u16.to_be_bytes()); // hard_timeout
+        body.extend(0u16.to_be_bytes()); // match_len = 0
+        body.push(0); // table_id
+        body.push(0); // pad
         body.extend(0x1234u64.to_be_bytes()); // cookie
 
         let (updates, has_more) = parse_flow_monitor_reply(&body).unwrap();
@@ -511,8 +519,8 @@ mod tests {
         body.extend(NXST_FLOW_MONITOR.to_be_bytes());
 
         // ABBREV entry: length=8, event=3, xid=42
-        body.extend(8u16.to_be_bytes());  // length
-        body.extend(3u16.to_be_bytes());  // event = ABBREV
+        body.extend(8u16.to_be_bytes()); // length
+        body.extend(3u16.to_be_bytes()); // event = ABBREV
         body.extend(42u32.to_be_bytes()); // xid
 
         let (updates, _) = parse_flow_monitor_reply(&body).unwrap();
@@ -538,28 +546,28 @@ mod tests {
         body.extend(NXST_FLOW_MONITOR.to_be_bytes());
 
         // First entry: ADDED
-        body.extend(24u16.to_be_bytes());     // length
-        body.extend(0u16.to_be_bytes());      // event = ADDED
-        body.extend(0u16.to_be_bytes());      // reason
-        body.extend(200u16.to_be_bytes());    // priority
-        body.extend(0u16.to_be_bytes());      // idle_timeout
-        body.extend(0u16.to_be_bytes());      // hard_timeout
-        body.extend(0u16.to_be_bytes());      // match_len
-        body.push(1);                         // table_id
-        body.push(0);                         // pad
+        body.extend(24u16.to_be_bytes()); // length
+        body.extend(0u16.to_be_bytes()); // event = ADDED
+        body.extend(0u16.to_be_bytes()); // reason
+        body.extend(200u16.to_be_bytes()); // priority
+        body.extend(0u16.to_be_bytes()); // idle_timeout
+        body.extend(0u16.to_be_bytes()); // hard_timeout
+        body.extend(0u16.to_be_bytes()); // match_len
+        body.push(1); // table_id
+        body.push(0); // pad
         body.extend(0xABCDu64.to_be_bytes()); // cookie
 
         // Second entry: DELETED
-        body.extend(24u16.to_be_bytes());     // length
-        body.extend(1u16.to_be_bytes());      // event = DELETED
-        body.extend(3u16.to_be_bytes());      // reason = OFPRR_DELETE
-        body.extend(50u16.to_be_bytes());     // priority
-        body.extend(10u16.to_be_bytes());     // idle_timeout
-        body.extend(0u16.to_be_bytes());      // hard_timeout
-        body.extend(0u16.to_be_bytes());      // match_len
-        body.push(0);                         // table_id
-        body.push(0);                         // pad
-        body.extend(0u64.to_be_bytes());      // cookie
+        body.extend(24u16.to_be_bytes()); // length
+        body.extend(1u16.to_be_bytes()); // event = DELETED
+        body.extend(3u16.to_be_bytes()); // reason = OFPRR_DELETE
+        body.extend(50u16.to_be_bytes()); // priority
+        body.extend(10u16.to_be_bytes()); // idle_timeout
+        body.extend(0u16.to_be_bytes()); // hard_timeout
+        body.extend(0u16.to_be_bytes()); // match_len
+        body.push(0); // table_id
+        body.push(0); // pad
+        body.extend(0u64.to_be_bytes()); // cookie
 
         let (updates, has_more) = parse_flow_monitor_reply(&body).unwrap();
         assert!(has_more);
@@ -571,7 +579,7 @@ mod tests {
                 assert_eq!(f.priority, 200);
                 assert_eq!(f.table_id, 1);
             }
-            _ => panic!("expected Full"),
+            FlowUpdate::Abbrev { .. } => panic!("expected Full"),
         }
 
         match &updates[1] {
@@ -580,7 +588,7 @@ mod tests {
                 assert_eq!(f.reason, 3);
                 assert_eq!(f.priority, 50);
             }
-            _ => panic!("expected Full"),
+            FlowUpdate::Abbrev { .. } => panic!("expected Full"),
         }
     }
 
@@ -596,9 +604,18 @@ mod tests {
 
     #[test]
     fn flow_update_event_values() {
-        assert_eq!(FlowUpdateEvent::from_u16(0).unwrap(), FlowUpdateEvent::Added);
-        assert_eq!(FlowUpdateEvent::from_u16(1).unwrap(), FlowUpdateEvent::Deleted);
-        assert_eq!(FlowUpdateEvent::from_u16(2).unwrap(), FlowUpdateEvent::Modified);
+        assert_eq!(
+            FlowUpdateEvent::from_u16(0).unwrap(),
+            FlowUpdateEvent::Added
+        );
+        assert_eq!(
+            FlowUpdateEvent::from_u16(1).unwrap(),
+            FlowUpdateEvent::Deleted
+        );
+        assert_eq!(
+            FlowUpdateEvent::from_u16(2).unwrap(),
+            FlowUpdateEvent::Modified
+        );
         assert!(FlowUpdateEvent::from_u16(4).is_err());
     }
 }

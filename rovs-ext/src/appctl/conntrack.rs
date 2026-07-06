@@ -2,7 +2,6 @@
 
 use std::fmt;
 
-
 /// A connection tracking entry from `dpctl/dump-conntrack`.
 ///
 /// Parses the most operationally useful fields from each conntrack line.
@@ -101,11 +100,7 @@ fn parse_one_entry(line: &str) -> ConntrackEntry {
     let raw = line.to_owned();
 
     // Protocol is the first field before the first comma
-    let protocol = line
-        .split(',')
-        .next()
-        .unwrap_or("unknown")
-        .to_owned();
+    let protocol = line.split(',').next().unwrap_or("unknown").to_owned();
 
     // Extract fields from orig=(...) tuple
     let (src, dst, sport, dport) = parse_orig_tuple(line);
@@ -188,11 +183,7 @@ fn extract_field<'a>(s: &'a str, key: &str) -> Option<&'a str> {
     let rest = &s[start..];
     let end = rest.find([',', ')']).unwrap_or(rest.len());
     let value = &rest[..end];
-    if value.is_empty() {
-        None
-    } else {
-        Some(value)
-    }
+    if value.is_empty() { None } else { Some(value) }
 }
 
 #[cfg(test)]
@@ -272,7 +263,10 @@ udp,orig=(src=10.0.0.3,dst=10.0.0.4,sport=1234,dport=53),reply=(src=10.0.0.4,dst
             mark: Some(0),
             raw: String::new(),
         };
-        assert_eq!(entry.to_string(), "tcp ESTABLISHED 10.0.0.1:54321 -> 10.0.0.2:80 (zone=1)");
+        assert_eq!(
+            entry.to_string(),
+            "tcp ESTABLISHED 10.0.0.1:54321 -> 10.0.0.2:80 (zone=1)"
+        );
     }
 
     #[test]
@@ -288,7 +282,10 @@ udp,orig=(src=10.0.0.3,dst=10.0.0.4,sport=1234,dport=53),reply=(src=10.0.0.4,dst
             mark: None,
             raw: String::new(),
         };
-        assert_eq!(entry.to_string(), "udp 192.168.1.5:5060 -> 203.0.113.1:5060");
+        assert_eq!(
+            entry.to_string(),
+            "udp 192.168.1.5:5060 -> 203.0.113.1:5060"
+        );
     }
 
     #[test]

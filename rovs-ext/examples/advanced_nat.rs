@@ -27,7 +27,7 @@ use std::net::Ipv4Addr;
 
 use clap::Parser;
 use rovs_openflow::oxm::ct_state;
-use rovs_openflow::{ActionList, Flow, Match, NatConfig, VConn, CT_COMMIT};
+use rovs_openflow::{ActionList, CT_COMMIT, Flow, Match, NatConfig, VConn};
 use rovs_transport::Address;
 
 // Port definitions
@@ -80,8 +80,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     ];
     // 1:1 NAT mappings
     let nat_1to1 = [
-        (Ipv4Addr::new(203, 0, 113, 10), Ipv4Addr::new(192, 168, 1, 100)),
-        (Ipv4Addr::new(203, 0, 113, 11), Ipv4Addr::new(192, 168, 1, 101)),
+        (
+            Ipv4Addr::new(203, 0, 113, 10),
+            Ipv4Addr::new(192, 168, 1, 100),
+        ),
+        (
+            Ipv4Addr::new(203, 0, 113, 11),
+            Ipv4Addr::new(192, 168, 1, 101),
+        ),
     ];
 
     let run_all = args.scenario.is_none();
@@ -126,7 +132,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("  Table 0: ARP -> NORMAL");
 
         // Default drop
-        conn.send_flow_sync(&Flow::add().table(0).priority(0).actions(ActionList::new().drop())).await?;
+        conn.send_flow_sync(
+            &Flow::add()
+                .table(0)
+                .priority(0)
+                .actions(ActionList::new().drop()),
+        )
+        .await?;
         println!("  Table 0: default -> DROP");
 
         // Table 1: Hairpin detection and NAT policy
@@ -191,7 +203,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .actions(ActionList::new().ct_nat(CT_COMMIT, HAIRPIN_ZONE, Some(2), hairpin_nat));
 
         conn.send_flow_sync(&hairpin_detect).await?;
-        println!("  Table 1: in={INTERNAL_PORT}, dst={public_ip}, new -> DNAT to {internal_server}");
+        println!(
+            "  Table 1: in={INTERNAL_PORT}, dst={public_ip}, new -> DNAT to {internal_server}"
+        );
 
         // External inbound to public IP -> DNAT to internal server
         let external_dnat = NatConfig::dnat(internal_server);
@@ -208,7 +222,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .actions(ActionList::new().ct_nat(CT_COMMIT, HAIRPIN_ZONE, Some(2), external_dnat));
 
         conn.send_flow_sync(&ext_to_internal).await?;
-        println!("  Table 1: in={EXTERNAL_PORT}, dst={public_ip}, new -> DNAT to {internal_server}");
+        println!(
+            "  Table 1: in={EXTERNAL_PORT}, dst={public_ip}, new -> DNAT to {internal_server}"
+        );
 
         // Normal outbound (not hairpin)
         let outbound_snat = NatConfig::snat(public_ip);
@@ -268,7 +284,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         conn.send_flow_sync(&ct_lb).await?;
         println!("  Table 3: IPv4 -> ct(zone={LB_ZONE}, table=4)");
 
-        conn.send_flow_sync(&Flow::add().table(3).priority(0).actions(ActionList::new().drop())).await?;
+        conn.send_flow_sync(
+            &Flow::add()
+                .table(3)
+                .priority(0)
+                .actions(ActionList::new().drop()),
+        )
+        .await?;
         println!("  Table 3: default -> DROP");
 
         // Table 4: LB policy
@@ -279,11 +301,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .table(4)
                 .priority(110)
                 .match_fields(
-                    Match::new()
-                        .ct_state_masked(ct_state::TRK | ct_state::INV, ct_state::TRK | ct_state::INV),
+                    Match::new().ct_state_masked(
+                        ct_state::TRK | ct_state::INV,
+                        ct_state::TRK | ct_state::INV,
+                    ),
                 )
                 .actions(ActionList::new().drop()),
-        ).await?;
+        )
+        .await?;
         println!("  Table 4: ct_state=+trk+inv -> DROP");
 
         // Established
@@ -292,12 +317,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .table(4)
                 .priority(100)
                 .match_fields(
-                    Match::new()
-                        .in_port(EXTERNAL_PORT)
-                        .ct_state_masked(ct_state::TRK | ct_state::EST, ct_state::TRK | ct_state::EST),
+                    Match::new().in_port(EXTERNAL_PORT).ct_state_masked(
+                        ct_state::TRK | ct_state::EST,
+                        ct_state::TRK | ct_state::EST,
+                    ),
                 )
                 .actions(ActionList::new().output(INTERNAL_PORT)),
-        ).await?;
+        )
+        .await?;
         println!("  Table 4: in={EXTERNAL_PORT}, established -> output:{INTERNAL_PORT}");
 
         conn.send_flow_sync(
@@ -305,12 +332,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .table(4)
                 .priority(100)
                 .match_fields(
-                    Match::new()
-                        .in_port(INTERNAL_PORT)
-                        .ct_state_masked(ct_state::TRK | ct_state::EST, ct_state::TRK | ct_state::EST),
+                    Match::new().in_port(INTERNAL_PORT).ct_state_masked(
+                        ct_state::TRK | ct_state::EST,
+                        ct_state::TRK | ct_state::EST,
+                    ),
                 )
                 .actions(ActionList::new().output(EXTERNAL_PORT)),
-        ).await?;
+        )
+        .await?;
         println!("  Table 4: in={INTERNAL_PORT}, established -> output:{EXTERNAL_PORT}");
 
         // Load balancing: port 80 -> backend 0, port 81 -> backend 1, port 82 -> backend 2
@@ -329,12 +358,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         .eth_type(0x0800)
                         .ip_proto(6) // TCP
                         .tcp_dst(port)
-                        .ct_state_masked(ct_state::TRK | ct_state::NEW, ct_state::TRK | ct_state::NEW),
+                        .ct_state_masked(
+                            ct_state::TRK | ct_state::NEW,
+                            ct_state::TRK | ct_state::NEW,
+                        ),
                 )
                 .actions(ActionList::new().ct_nat(CT_COMMIT, LB_ZONE, Some(5), dnat));
 
             conn.send_flow_sync(&lb_rule).await?;
-            println!("  Table 4: in={EXTERNAL_PORT}, tcp_dst={port}, new -> DNAT to {backend}:8080");
+            println!(
+                "  Table 4: in={EXTERNAL_PORT}, tcp_dst={port}, new -> DNAT to {backend}:8080"
+            );
         }
 
         // Outbound SNAT
@@ -347,10 +381,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     Match::new()
                         .in_port(INTERNAL_PORT)
                         .eth_type(0x0800)
-                        .ct_state_masked(ct_state::TRK | ct_state::NEW, ct_state::TRK | ct_state::NEW),
+                        .ct_state_masked(
+                            ct_state::TRK | ct_state::NEW,
+                            ct_state::TRK | ct_state::NEW,
+                        ),
                 )
                 .actions(ActionList::new().ct_nat(CT_COMMIT, LB_ZONE, Some(5), lb_snat)),
-        ).await?;
+        )
+        .await?;
         println!("  Table 4: in={INTERNAL_PORT}, new -> SNAT to {public_ip}");
 
         // Table 5: Output after LB NAT
@@ -360,7 +398,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .priority(100)
                 .match_fields(Match::new().in_port(EXTERNAL_PORT))
                 .actions(ActionList::new().output(INTERNAL_PORT)),
-        ).await?;
+        )
+        .await?;
         println!("  Table 5: in={EXTERNAL_PORT} -> output:{INTERNAL_PORT}");
 
         conn.send_flow_sync(
@@ -369,7 +408,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .priority(100)
                 .match_fields(Match::new().in_port(INTERNAL_PORT))
                 .actions(ActionList::new().output(EXTERNAL_PORT)),
-        ).await?;
+        )
+        .await?;
         println!("  Table 5: in={INTERNAL_PORT} -> output:{EXTERNAL_PORT}");
     }
 
@@ -397,7 +437,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         conn.send_flow_sync(&ct_static).await?;
         println!("  Table 6: IPv4 -> ct(zone={STATIC_ZONE}, table=7)");
 
-        conn.send_flow_sync(&Flow::add().table(6).priority(0).actions(ActionList::new().drop())).await?;
+        conn.send_flow_sync(
+            &Flow::add()
+                .table(6)
+                .priority(0)
+                .actions(ActionList::new().drop()),
+        )
+        .await?;
         println!("  Table 6: default -> DROP");
 
         // Table 7: Static NAT policy
@@ -408,11 +454,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .table(7)
                 .priority(110)
                 .match_fields(
-                    Match::new()
-                        .ct_state_masked(ct_state::TRK | ct_state::INV, ct_state::TRK | ct_state::INV),
+                    Match::new().ct_state_masked(
+                        ct_state::TRK | ct_state::INV,
+                        ct_state::TRK | ct_state::INV,
+                    ),
                 )
                 .actions(ActionList::new().drop()),
-        ).await?;
+        )
+        .await?;
         println!("  Table 7: ct_state=+trk+inv -> DROP");
 
         // Established connections
@@ -421,12 +470,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .table(7)
                 .priority(100)
                 .match_fields(
-                    Match::new()
-                        .in_port(EXTERNAL_PORT)
-                        .ct_state_masked(ct_state::TRK | ct_state::EST, ct_state::TRK | ct_state::EST),
+                    Match::new().in_port(EXTERNAL_PORT).ct_state_masked(
+                        ct_state::TRK | ct_state::EST,
+                        ct_state::TRK | ct_state::EST,
+                    ),
                 )
                 .actions(ActionList::new().output(INTERNAL_PORT)),
-        ).await?;
+        )
+        .await?;
         println!("  Table 7: in={EXTERNAL_PORT}, established -> output:{INTERNAL_PORT}");
 
         conn.send_flow_sync(
@@ -434,12 +485,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .table(7)
                 .priority(100)
                 .match_fields(
-                    Match::new()
-                        .in_port(INTERNAL_PORT)
-                        .ct_state_masked(ct_state::TRK | ct_state::EST, ct_state::TRK | ct_state::EST),
+                    Match::new().in_port(INTERNAL_PORT).ct_state_masked(
+                        ct_state::TRK | ct_state::EST,
+                        ct_state::TRK | ct_state::EST,
+                    ),
                 )
                 .actions(ActionList::new().output(EXTERNAL_PORT)),
-        ).await?;
+        )
+        .await?;
         println!("  Table 7: in={INTERNAL_PORT}, established -> output:{EXTERNAL_PORT}");
 
         // Static 1:1 NAT rules
@@ -454,12 +507,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         .in_port(EXTERNAL_PORT)
                         .eth_type(0x0800)
                         .ipv4_dst(*external_ip, 32)
-                        .ct_state_masked(ct_state::TRK | ct_state::NEW, ct_state::TRK | ct_state::NEW),
+                        .ct_state_masked(
+                            ct_state::TRK | ct_state::NEW,
+                            ct_state::TRK | ct_state::NEW,
+                        ),
                 )
                 .actions(ActionList::new().ct_nat(CT_COMMIT, STATIC_ZONE, Some(8), dnat));
 
             conn.send_flow_sync(&inbound).await?;
-            println!("  Table 7: in={EXTERNAL_PORT}, dst={external_ip}, new -> DNAT to {internal_ip}");
+            println!(
+                "  Table 7: in={EXTERNAL_PORT}, dst={external_ip}, new -> DNAT to {internal_ip}"
+            );
 
             // Outbound: internal_ip -> external_ip (SNAT)
             let snat = NatConfig::snat(*external_ip);
@@ -471,12 +529,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         .in_port(INTERNAL_PORT)
                         .eth_type(0x0800)
                         .ipv4_src(*internal_ip, 32)
-                        .ct_state_masked(ct_state::TRK | ct_state::NEW, ct_state::TRK | ct_state::NEW),
+                        .ct_state_masked(
+                            ct_state::TRK | ct_state::NEW,
+                            ct_state::TRK | ct_state::NEW,
+                        ),
                 )
                 .actions(ActionList::new().ct_nat(CT_COMMIT, STATIC_ZONE, Some(8), snat));
 
             conn.send_flow_sync(&outbound).await?;
-            println!("  Table 7: in={INTERNAL_PORT}, src={internal_ip}, new -> SNAT to {external_ip}");
+            println!(
+                "  Table 7: in={INTERNAL_PORT}, src={internal_ip}, new -> SNAT to {external_ip}"
+            );
         }
 
         // Default outbound SNAT (for IPs without 1:1 mapping)
@@ -489,10 +552,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     Match::new()
                         .in_port(INTERNAL_PORT)
                         .eth_type(0x0800)
-                        .ct_state_masked(ct_state::TRK | ct_state::NEW, ct_state::TRK | ct_state::NEW),
+                        .ct_state_masked(
+                            ct_state::TRK | ct_state::NEW,
+                            ct_state::TRK | ct_state::NEW,
+                        ),
                 )
                 .actions(ActionList::new().ct_nat(CT_COMMIT, STATIC_ZONE, Some(8), default_snat)),
-        ).await?;
+        )
+        .await?;
         println!("  Table 7: in={INTERNAL_PORT}, new (default) -> SNAT to {public_ip}");
 
         // Table 8: Output
@@ -502,7 +569,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .priority(100)
                 .match_fields(Match::new().in_port(EXTERNAL_PORT))
                 .actions(ActionList::new().output(INTERNAL_PORT)),
-        ).await?;
+        )
+        .await?;
         println!("  Table 8: in={EXTERNAL_PORT} -> output:{INTERNAL_PORT}");
 
         conn.send_flow_sync(
@@ -511,7 +579,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .priority(100)
                 .match_fields(Match::new().in_port(INTERNAL_PORT))
                 .actions(ActionList::new().output(EXTERNAL_PORT)),
-        ).await?;
+        )
+        .await?;
         println!("  Table 8: in={INTERNAL_PORT} -> output:{EXTERNAL_PORT}");
     }
 

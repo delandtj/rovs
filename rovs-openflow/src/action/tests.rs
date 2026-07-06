@@ -1,7 +1,7 @@
 //! Unit tests for OpenFlow actions.
 
-use super::*;
 use super::types::NxActionSubtype;
+use super::*;
 use crate::match_fields::MacAddr;
 use crate::oxm::OxmField;
 
@@ -136,7 +136,7 @@ fn encode_set_field_mac_eth_dst() {
 
 #[test]
 fn encode_set_field_u32_ipv4_dst() {
-    let addr: u32 = 0x0a000001; // 10.0.0.1
+    let addr: u32 = 0x0a00_0001; // 10.0.0.1
     let bytes = encode_set_field_u32(OxmField::Ipv4Dst, addr);
     assert_eq!(bytes.len(), 16);
     // type = 25 (SetField)
@@ -217,7 +217,7 @@ fn encode_set_tunnel_id_action() {
 
 #[test]
 fn encode_nx_reg_load_reg0() {
-    let bytes = nicira::encode_nx_reg_load(0, 0x12345678, 0, 32);
+    let bytes = nicira::encode_nx_reg_load(0, 0x1234_5678, 0, 32);
     assert_eq!(bytes.len(), 24);
     // type = 0xffff
     assert_eq!(&bytes[0..2], &[0xff, 0xff]);
@@ -235,7 +235,7 @@ fn encode_nx_reg_load_reg0() {
 fn encode_nx_move_eth_src_to_reg() {
     // NXM headers: EthSrc = 0x80000406, Reg0 = 0x00010004
     let src = (0x8000 << 16) | (2 << 9) | 6; // EthSrc
-    let dst = (1 << 16) | (0 << 9) | 4; // NXM_NX_REG0
+    let dst = (1 << 16) | 4; // NXM_NX_REG0
     let bytes = nicira::encode_nx_move(src, dst, 32, 0, 0);
     assert_eq!(bytes.len(), 24);
     // subtype = 6 (Move)
@@ -326,9 +326,7 @@ fn action_set_ipv4_dst_encode() {
 
 #[test]
 fn action_list_encode_multiple() {
-    let list = ActionList::new()
-        .pop_vlan()
-        .output(OutputPort::Port(2));
+    let list = ActionList::new().pop_vlan().output(OutputPort::Port(2));
     let bytes = list.encode();
     // PopVlan (8) + Output (16) = 24 bytes (already 8-byte aligned)
     assert_eq!(bytes.len(), 24);
@@ -486,7 +484,10 @@ fn decode_set_vlan_vid_action() {
 
 #[test]
 fn decode_nx_resubmit_action() {
-    let action = Action::NxResubmit { port: Some(1), table: Some(10) };
+    let action = Action::NxResubmit {
+        port: Some(1),
+        table: Some(10),
+    };
     let encoded = action.encode();
     let (decoded, _) = Action::decode(&encoded).unwrap();
     match decoded {
@@ -500,7 +501,11 @@ fn decode_nx_resubmit_action() {
 
 #[test]
 fn decode_nx_ct_action() {
-    let action = Action::NxCt { flags: 0x01, zone: 100, table: Some(5) };
+    let action = Action::NxCt {
+        flags: 0x01,
+        zone: 100,
+        table: Some(5),
+    };
     let encoded = action.encode();
     let (decoded, _) = Action::decode(&encoded).unwrap();
     match decoded {
@@ -515,11 +520,11 @@ fn decode_nx_ct_action() {
 
 #[test]
 fn decode_set_tunnel_id_action() {
-    let action = Action::SetTunnelId(0x1234567890);
+    let action = Action::SetTunnelId(0x0012_3456_7890);
     let encoded = action.encode();
     let (decoded, _) = Action::decode(&encoded).unwrap();
     match decoded {
-        Action::SetTunnelId(tun_id) => assert_eq!(tun_id, 0x1234567890),
+        Action::SetTunnelId(tun_id) => assert_eq!(tun_id, 0x0012_3456_7890),
         _ => panic!("expected SetTunnelId action"),
     }
 }
@@ -573,13 +578,31 @@ fn roundtrip_action_list() {
 #[test]
 fn output_port_from_wire() {
     assert_eq!(OutputPort::from_wire(1).to_wire_port(), 1);
-    assert_eq!(OutputPort::from_wire(port::CONTROLLER).to_wire_port(), port::CONTROLLER);
-    assert!(matches!(OutputPort::from_wire(port::FLOOD), OutputPort::Flood));
+    assert_eq!(
+        OutputPort::from_wire(port::CONTROLLER).to_wire_port(),
+        port::CONTROLLER
+    );
+    assert!(matches!(
+        OutputPort::from_wire(port::FLOOD),
+        OutputPort::Flood
+    ));
     assert!(matches!(OutputPort::from_wire(port::ALL), OutputPort::All));
-    assert!(matches!(OutputPort::from_wire(port::IN_PORT), OutputPort::InPort));
-    assert!(matches!(OutputPort::from_wire(port::LOCAL), OutputPort::Local));
-    assert!(matches!(OutputPort::from_wire(port::NORMAL), OutputPort::Normal));
-    assert!(matches!(OutputPort::from_wire(port::NONE), OutputPort::None));
+    assert!(matches!(
+        OutputPort::from_wire(port::IN_PORT),
+        OutputPort::InPort
+    ));
+    assert!(matches!(
+        OutputPort::from_wire(port::LOCAL),
+        OutputPort::Local
+    ));
+    assert!(matches!(
+        OutputPort::from_wire(port::NORMAL),
+        OutputPort::Normal
+    ));
+    assert!(matches!(
+        OutputPort::from_wire(port::NONE),
+        OutputPort::None
+    ));
 }
 
 #[test]
@@ -590,7 +613,10 @@ fn action_type_try_from() {
     assert_eq!(ActionType::try_from(22).unwrap(), ActionType::Group);
     assert_eq!(ActionType::try_from(24).unwrap(), ActionType::DecNwTtl);
     assert_eq!(ActionType::try_from(25).unwrap(), ActionType::SetField);
-    assert_eq!(ActionType::try_from(0xffff).unwrap(), ActionType::Experimenter);
+    assert_eq!(
+        ActionType::try_from(0xffff).unwrap(),
+        ActionType::Experimenter
+    );
     assert!(ActionType::try_from(99).is_err());
 }
 
@@ -695,8 +721,8 @@ fn nx_learn_builder() {
 fn nx_learn_with_specs() {
     let learn = NxLearn::new()
         .table(10)
-        .match_field(0x00010006, 0x00010006, 48) // eth_src -> eth_src
-        .load_immediate(0x00000404, vec![0, 0, 0, 1], 32); // output port 1
+        .match_field(0x0001_0006, 0x0001_0006, 48) // eth_src -> eth_src
+        .load_immediate(0x0000_0404, vec![0, 0, 0, 1], 32); // output port 1
 
     assert_eq!(learn.table_id, 10);
     assert_eq!(learn.specs.len(), 2);
@@ -706,8 +732,8 @@ fn nx_learn_with_specs() {
             dst_field,
             n_bits,
         } => {
-            assert_eq!(src_field, &0x00010006);
-            assert_eq!(dst_field, &0x00010006);
+            assert_eq!(src_field, &0x0001_0006);
+            assert_eq!(dst_field, &0x0001_0006);
             assert_eq!(n_bits, &48);
         }
         _ => panic!("expected MatchField"),
@@ -718,7 +744,7 @@ fn nx_learn_with_specs() {
             value,
             n_bits,
         } => {
-            assert_eq!(dst_field, &0x00000404);
+            assert_eq!(dst_field, &0x0000_0404);
             assert_eq!(value, &[0, 0, 0, 1]);
             assert_eq!(n_bits, &32);
         }
@@ -767,11 +793,11 @@ fn action_list_learn_builder() {
 
 #[test]
 fn action_list_set_tunnel_id() {
-    let list = ActionList::new().set_tunnel_id(0x123456789abc);
+    let list = ActionList::new().set_tunnel_id(0x1234_5678_9abc);
     assert_eq!(list.len(), 1);
     match &list.actions()[0] {
         Action::SetTunnelId(tun_id) => {
-            assert_eq!(*tun_id, 0x123456789abc);
+            assert_eq!(*tun_id, 0x1234_5678_9abc);
         }
         _ => panic!("expected SetTunnelId"),
     }

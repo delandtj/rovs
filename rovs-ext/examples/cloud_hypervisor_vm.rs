@@ -125,10 +125,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Connected to OVSDB!\n");
 
     match args.command {
-        Some(Commands::Setup { bridge, openflow, external }) => {
+        Some(Commands::Setup {
+            bridge,
+            openflow,
+            external,
+        }) => {
             setup_vm_bridge(&mut client, &bridge, openflow, external.as_deref()).await?;
         }
-        Some(Commands::Attach { bridge, tap, vlan, vm_name }) => {
+        Some(Commands::Attach {
+            bridge,
+            tap,
+            vlan,
+            vm_name,
+        }) => {
             attach_tap(&mut client, &bridge, &tap, vlan, vm_name.as_deref()).await?;
         }
         Some(Commands::Detach { tap }) => {
@@ -257,7 +266,11 @@ async fn attach_tap(
     txn.mutate_by_name(
         "Bridge",
         bridge_name,
-        vec![serde_json::json!(["ports", "insert", ["set", [port_ref.to_json()]]])],
+        vec![serde_json::json!([
+            "ports",
+            "insert",
+            ["set", [port_ref.to_json()]]
+        ])],
     );
 
     client.commit(&mut txn).await?;
@@ -270,10 +283,7 @@ async fn attach_tap(
 }
 
 /// Detach a tap interface from any bridge
-async fn detach_tap(
-    client: &mut Client,
-    tap_name: &str,
-) -> Result<(), Box<dyn std::error::Error>> {
+async fn detach_tap(client: &mut Client, tap_name: &str) -> Result<(), Box<dyn std::error::Error>> {
     println!("=== Detaching Tap Interface ===");
     println!("Tap: {tap_name}");
 
@@ -287,10 +297,7 @@ async fn detach_tap(
 
 /// List all VMs attached to the bridge
 #[allow(clippy::unnecessary_wraps)]
-fn list_vms(
-    client: &mut Client,
-    bridge_name: &str,
-) -> Result<(), Box<dyn std::error::Error>> {
+fn list_vms(client: &mut Client, bridge_name: &str) -> Result<(), Box<dyn std::error::Error>> {
     println!("=== VMs on Bridge: {bridge_name} ===\n");
 
     // Find the bridge and its ports
@@ -308,7 +315,10 @@ fn list_vms(
     let ports_value = bridge.get("ports");
 
     // List ports with their details
-    println!("{:<15} {:<10} {:<20} {:<15}", "PORT", "VLAN", "VM-NAME", "TYPE");
+    println!(
+        "{:<15} {:<10} {:<20} {:<15}",
+        "PORT", "VLAN", "VM-NAME", "TYPE"
+    );
     println!("{}", "-".repeat(60));
 
     // Collect port UUIDs from the bridge's ports field
@@ -351,11 +361,13 @@ fn list_vms(
             continue;
         }
 
-        let vlan = port.get_i64("tag")
+        let vlan = port
+            .get_i64("tag")
             .map_or_else(|| "-".to_string(), |v| v.to_string());
 
         // Parse external_ids map to find vm-name
-        let vm_name = port.get("external_ids")
+        let vm_name = port
+            .get("external_ids")
             .and_then(|v| {
                 // Format: ["map", [["key1", "val1"], ["key2", "val2"]]]
                 if let Some(arr) = v.as_array() {
@@ -376,7 +388,9 @@ fn list_vms(
             .unwrap_or("-");
 
         // Get interface type
-        let iface_type = client.idl().rows("Interface")
+        let iface_type = client
+            .idl()
+            .rows("Interface")
             .find(|i| i.get_string("name") == Some(port_name))
             .and_then(|i| i.get_string("type"))
             .unwrap_or("system");
@@ -487,7 +501,11 @@ async fn run_demo(client: &mut Client) -> Result<(), Box<dyn std::error::Error>>
     txn.mutate_by_name(
         "Bridge",
         bridge_name,
-        vec![serde_json::json!(["ports", "insert", ["set", [port_ref.to_json()]]])],
+        vec![serde_json::json!([
+            "ports",
+            "insert",
+            ["set", [port_ref.to_json()]]
+        ])],
     );
 
     client.commit(&mut txn).await?;
@@ -610,7 +628,11 @@ async fn attach_vm_tap(
     txn.mutate_by_name(
         "Bridge",
         bridge_name,
-        vec![serde_json::json!(["ports", "insert", ["set", [port_ref.to_json()]]])],
+        vec![serde_json::json!([
+            "ports",
+            "insert",
+            ["set", [port_ref.to_json()]]
+        ])],
     );
 
     client.commit(&mut txn).await?;

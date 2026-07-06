@@ -175,13 +175,9 @@ pub use error::{Error, Result};
 
 // Re-export commonly used types from flows
 pub use flows::{
-    ArpProxyBuilder, ArpProxyConfig, ArpProxyFlows,
-    DnatConfig, DnatRule, DnatService, DnatTarget,
-    LearningConfig, LearningSwitchFlows,
-    MacNatConfig, MacNatFlows,
-    NdpProxyBuilder, NdpProxyConfig, NdpProxyFlows,
-    SnatConfig, SnatGateway,
-    VlanAccessPort, VlanConfig,
+    ArpProxyBuilder, ArpProxyConfig, ArpProxyFlows, DnatConfig, DnatRule, DnatService, DnatTarget,
+    LearningConfig, LearningSwitchFlows, MacNatConfig, MacNatFlows, NdpProxyBuilder,
+    NdpProxyConfig, NdpProxyFlows, SnatConfig, SnatGateway, VlanAccessPort, VlanConfig,
 };
 
 // Re-export commonly used types from topology
@@ -192,7 +188,7 @@ pub use controller::{Controller, ControllerConfig, HandlerAction, PacketHandler}
 
 // Re-export commonly used utilities
 pub use util::{
-    format_ipv4, format_mac, ipv4_to_u32, mac_to_u64, parse_ipv4, parse_mac, PortMapper,
+    PortMapper, format_ipv4, format_mac, ipv4_to_u32, mac_to_u64, parse_ipv4, parse_mac,
 };
 
 // Re-export appctl types

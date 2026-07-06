@@ -8,7 +8,7 @@
 //! With `eth_type`: Success
 
 use rovs_openflow::oxm::ct_state;
-use rovs_openflow::{ActionList, Flow, Match, VConn, CT_COMMIT};
+use rovs_openflow::{ActionList, CT_COMMIT, Flow, Match, VConn};
 use rovs_transport::Address;
 
 #[tokio::main]
@@ -37,7 +37,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     match conn.send_flow_sync(&flow_no_ethtype).await {
         Ok(()) => println!("  OK (unexpected!)"),
-        Err(e) => println!("  Expected error: BadAction code 10 (MATCH_INCONSISTENT)\n  Got: {e:?}"),
+        Err(e) => {
+            println!("  Expected error: BadAction code 10 (MATCH_INCONSISTENT)\n  Got: {e:?}")
+        }
     }
 
     // Test 2: ct_state match + ct(commit) WITH eth_type=0x0800 - should SUCCEED

@@ -51,11 +51,7 @@ impl Dispatcher {
     /// returns `SendPacketOut`, the packet is sent before returning.
     ///
     /// Returns `HandlerAction::NotHandled` if no handler processed the packet.
-    pub async fn dispatch(
-        &self,
-        event: &PacketInEvent,
-        conn: &mut VConn,
-    ) -> Result<HandlerAction> {
+    pub async fn dispatch(&self, event: &PacketInEvent, conn: &mut VConn) -> Result<HandlerAction> {
         let mut ctx = HandlerContext::new(conn);
 
         for handler in &self.handlers {
@@ -64,7 +60,7 @@ impl Dispatcher {
             }
 
             match handler.handle(event, &mut ctx).await? {
-                HandlerAction::NotHandled => {},
+                HandlerAction::NotHandled => {}
                 HandlerAction::SendPacketOut(packet_out) => {
                     ctx.send_packet_out(&packet_out).await?;
                     return Ok(HandlerAction::Handled);

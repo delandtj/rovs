@@ -20,13 +20,7 @@ use crate::Result;
 /// * `table` - Flow table
 /// * `priority` - Flow priority
 #[must_use]
-pub fn push_vlan_flow(
-    in_port: u32,
-    out_port: u32,
-    vlan_id: u16,
-    table: u8,
-    priority: u16,
-) -> Flow {
+pub fn push_vlan_flow(in_port: u32, out_port: u32, vlan_id: u16, table: u8, priority: u16) -> Flow {
     Flow::add()
         .table(table)
         .priority(priority)
@@ -52,13 +46,7 @@ pub fn push_vlan_flow(
 /// * `table` - Flow table
 /// * `priority` - Flow priority
 #[must_use]
-pub fn pop_vlan_flow(
-    in_port: u32,
-    out_port: u32,
-    vlan_id: u16,
-    table: u8,
-    priority: u16,
-) -> Flow {
+pub fn pop_vlan_flow(in_port: u32, out_port: u32, vlan_id: u16, table: u8, priority: u16) -> Flow {
     Flow::add()
         .table(table)
         .priority(priority)
@@ -154,7 +142,10 @@ impl VlanAccessPort {
     /// Get all flows for this access port.
     #[must_use]
     pub fn all_flows(&self, table: u8, priority: u16) -> Vec<Flow> {
-        vec![self.ingress_flow(table, priority), self.egress_flow(table, priority)]
+        vec![
+            self.ingress_flow(table, priority),
+            self.egress_flow(table, priority),
+        ]
     }
 
     /// Install access port flows to the switch.
@@ -183,7 +174,8 @@ impl VlanConfig {
     /// Add an access port to this VLAN.
     #[must_use]
     pub fn add_access_port(mut self, port: u32, vlan_id: u16, trunk_port: u32) -> Self {
-        self.access_ports.push(VlanAccessPort::new(port, vlan_id, trunk_port));
+        self.access_ports
+            .push(VlanAccessPort::new(port, vlan_id, trunk_port));
         self
     }
 

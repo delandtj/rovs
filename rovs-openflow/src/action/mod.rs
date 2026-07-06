@@ -19,8 +19,8 @@ use crate::oxm::{OxmClass, OxmField};
 
 // Re-export public types
 #[allow(unused_imports)]
-pub use nicira::{learn_flags, LearnSpec, NxLearn};
-pub use types::{ct_flags, nat_flags, nat_range, port, NICIRA_VENDOR_ID};
+pub use nicira::{LearnSpec, NxLearn, learn_flags};
+pub use types::{NICIRA_VENDOR_ID, ct_flags, nat_flags, nat_range, port};
 
 // Use ActionType internally (NxActionSubtype is used by nicira module)
 use types::ActionType;
@@ -478,7 +478,10 @@ impl ActionList {
     ///
     /// Convenience method for `resubmit(None, Some(table))`.
     pub fn resubmit_table(mut self, table: u8) -> Self {
-        self.actions.push(Action::NxResubmit { port: None, table: Some(table) });
+        self.actions.push(Action::NxResubmit {
+            port: None,
+            table: Some(table),
+        });
         self
     }
 
@@ -496,7 +499,11 @@ impl ActionList {
     ///
     /// Commits the connection to the connection tracking table.
     pub fn ct_commit(mut self, zone: u16) -> Self {
-        self.actions.push(Action::NxCt { flags: CT_COMMIT, zone, table: None });
+        self.actions.push(Action::NxCt {
+            flags: CT_COMMIT,
+            zone,
+            table: None,
+        });
         self
     }
 
@@ -526,7 +533,12 @@ impl ActionList {
     /// )
     /// ```
     pub fn ct_nat(mut self, flags: u16, zone: u16, table: Option<u8>, nat: NatConfig) -> Self {
-        self.actions.push(Action::NxCtNat { flags, zone, table, nat });
+        self.actions.push(Action::NxCtNat {
+            flags,
+            zone,
+            table,
+            nat,
+        });
         self
     }
 
@@ -812,6 +824,7 @@ impl fmt::Display for NatConfig {
 }
 
 impl fmt::Display for Action {
+    #[allow(clippy::too_many_lines)]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Output(OutputPort::Normal) => write!(f, "NORMAL"),
@@ -872,7 +885,12 @@ impl fmt::Display for Action {
                 }
                 write!(f, "{})", parts.join(","))
             }
-            Self::NxCtNat { flags, zone, table, nat } => {
+            Self::NxCtNat {
+                flags,
+                zone,
+                table,
+                nat,
+            } => {
                 write!(f, "ct(")?;
                 let mut parts = Vec::new();
                 if *flags & types::ct_flags::COMMIT != 0 {
@@ -887,11 +905,29 @@ impl fmt::Display for Action {
                 parts.push(nat.to_string());
                 write!(f, "{})", parts.join(","))
             }
-            Self::NxMove { src_field, dst_field, n_bits, src_ofs, dst_ofs } => {
-                write!(f, "move:NXM({src_field:#x})[{src_ofs}..{n_bits}]->NXM({dst_field:#x})[{dst_ofs}..{n_bits}]")
+            Self::NxMove {
+                src_field,
+                dst_field,
+                n_bits,
+                src_ofs,
+                dst_ofs,
+            } => {
+                write!(
+                    f,
+                    "move:NXM({src_field:#x})[{src_ofs}..{n_bits}]->NXM({dst_field:#x})[{dst_ofs}..{n_bits}]"
+                )
             }
-            Self::NxRegLoad { dst_field, dst_ofs, n_bits, value } => {
-                write!(f, "load:{value:#x}->NXM({dst_field:#x})[{dst_ofs}..{}]", dst_ofs + n_bits)
+            Self::NxRegLoad {
+                dst_field,
+                dst_ofs,
+                n_bits,
+                value,
+            } => {
+                write!(
+                    f,
+                    "load:{value:#x}->NXM({dst_field:#x})[{dst_ofs}..{}]",
+                    dst_ofs + n_bits
+                )
             }
         }
     }
@@ -933,21 +969,31 @@ impl Action {
             Self::DecTtl => encode_dec_ttl(),
             Self::GotoTable(_) => Vec::new(), // GotoTable is an instruction, not action
             Self::WriteMetadata { .. } => Vec::new(), // WriteMetadata is an instruction
-            Self::Meter(_) => Vec::new(), // Meter is an instruction
+            Self::Meter(_) => Vec::new(),     // Meter is an instruction
             Self::Group(group_id) => encode_group(*group_id),
             Self::SetTunnelId(tun_id) => encode_set_tunnel_id(*tun_id),
             Self::NxResubmit { port, table } => encode_nx_resubmit(*port, *table),
             Self::NxLearn(learn) => encode_nx_learn(learn),
             Self::NxCt { flags, zone, table } => encode_nx_ct(*flags, *zone, *table),
-            Self::NxCtNat { flags, zone, table, nat } => {
-                encode_nx_ct_nat(*flags, *zone, *table, nat)
-            }
-            Self::NxMove { src_field, dst_field, n_bits, src_ofs, dst_ofs } => {
-                encode_nx_move(*src_field, *dst_field, *n_bits, *src_ofs, *dst_ofs)
-            }
-            Self::NxRegLoad { dst_field, dst_ofs, n_bits, value } => {
-                encode_nx_reg_load_nxm(*dst_field, *dst_ofs, *n_bits, *value)
-            }
+            Self::NxCtNat {
+                flags,
+                zone,
+                table,
+                nat,
+            } => encode_nx_ct_nat(*flags, *zone, *table, nat),
+            Self::NxMove {
+                src_field,
+                dst_field,
+                n_bits,
+                src_ofs,
+                dst_ofs,
+            } => encode_nx_move(*src_field, *dst_field, *n_bits, *src_ofs, *dst_ofs),
+            Self::NxRegLoad {
+                dst_field,
+                dst_ofs,
+                n_bits,
+                value,
+            } => encode_nx_reg_load_nxm(*dst_field, *dst_ofs, *n_bits, *value),
         }
     }
 
@@ -1005,9 +1051,7 @@ impl Action {
                 let group_id = u32::from_be_bytes([data[4], data[5], data[6], data[7]]);
                 Self::Group(group_id)
             }
-            ActionType::SetField => {
-                decode_set_field_action(&data[4..length])?
-            }
+            ActionType::SetField => decode_set_field_action(&data[4..length])?,
             ActionType::Experimenter => {
                 if length < 10 {
                     return Err(crate::Error::Parse("experimenter action too short".into()));
@@ -1128,8 +1172,7 @@ fn encode_set_field_mac(field: OxmField, mac: [u8; 6]) -> Vec<u8> {
     buf.extend(16u16.to_be_bytes()); // length
 
     // OXM header for MAC field: class=0x8000, field, has_mask=false, length=6
-    let oxm_header =
-        ((OxmClass::OpenflowBasic as u32) << 16) | ((field as u32) << 9) | 6;
+    let oxm_header = ((OxmClass::OpenflowBasic as u32) << 16) | ((field as u32) << 9) | 6;
     buf.extend(oxm_header.to_be_bytes());
     buf.extend(mac);
     buf.extend([0u8; 2]); // padding to 16 bytes
@@ -1143,8 +1186,7 @@ fn encode_set_field_u16(field: OxmField, value: u16) -> Vec<u8> {
     buf.extend(16u16.to_be_bytes()); // length
 
     // OXM header for u16 field: class=0x8000, field, has_mask=false, length=2
-    let oxm_header =
-        ((OxmClass::OpenflowBasic as u32) << 16) | ((field as u32) << 9) | 2;
+    let oxm_header = ((OxmClass::OpenflowBasic as u32) << 16) | ((field as u32) << 9) | 2;
     buf.extend(oxm_header.to_be_bytes());
     buf.extend(value.to_be_bytes());
     buf.extend([0u8; 6]); // padding to 16 bytes
@@ -1158,8 +1200,7 @@ fn encode_set_field_u32(field: OxmField, value: u32) -> Vec<u8> {
     buf.extend(16u16.to_be_bytes()); // length
 
     // OXM header for u32 field: class=0x8000, field, has_mask=false, length=4
-    let oxm_header =
-        ((OxmClass::OpenflowBasic as u32) << 16) | ((field as u32) << 9) | 4;
+    let oxm_header = ((OxmClass::OpenflowBasic as u32) << 16) | ((field as u32) << 9) | 4;
     buf.extend(oxm_header.to_be_bytes());
     buf.extend(value.to_be_bytes());
     buf.extend([0u8; 4]); // padding to 16 bytes
@@ -1241,8 +1282,7 @@ fn decode_set_field_action(data: &[u8]) -> crate::Result<Action> {
         // Field 16 is tunnel ID
         if field == 16 && length >= 8 {
             let tun_id = u64::from_be_bytes([
-                value[0], value[1], value[2], value[3],
-                value[4], value[5], value[6], value[7],
+                value[0], value[1], value[2], value[3], value[4], value[5], value[6], value[7],
             ]);
             Ok(Action::SetTunnelId(tun_id))
         } else {

@@ -38,7 +38,7 @@ use std::net::{Ipv4Addr, Ipv6Addr};
 
 use clap::Parser;
 use rovs_openflow::oxm::ct_state;
-use rovs_openflow::{ActionList, Flow, Match, NatConfig, VConn, CT_COMMIT};
+use rovs_openflow::{ActionList, CT_COMMIT, Flow, Match, NatConfig, VConn};
 use rovs_transport::Address;
 
 #[derive(Parser)]
@@ -119,8 +119,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .priority(200)
         .match_fields(
             Match::new()
-                .eth_type(0x0806)     // ARP
-                .arp_op(1)            // ARP Request
+                .eth_type(0x0806) // ARP
+                .arp_op(1) // ARP Request
                 .arp_tpa(gateway_ipv4),
         )
         .actions(ActionList::new().controller(0xffff));
@@ -143,10 +143,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .table(0)
         .priority(200)
         .match_fields(
-            Match::new()
-                .eth_type(0x86dd)
-                .ip_proto(58)
-                .icmpv6_type(135),  // Neighbor Solicitation
+            Match::new().eth_type(0x86dd).ip_proto(58).icmpv6_type(135), // Neighbor Solicitation
         )
         .actions(ActionList::new().controller(0xffff));
 
@@ -158,10 +155,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .table(0)
         .priority(190)
         .match_fields(
-            Match::new()
-                .eth_type(0x86dd)
-                .ip_proto(58)
-                .icmpv6_type(136),  // Neighbor Advertisement
+            Match::new().eth_type(0x86dd).ip_proto(58).icmpv6_type(136), // Neighbor Advertisement
         )
         .actions(ActionList::new().normal());
 
@@ -171,13 +165,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     if !args.no_learning {
         // MAC learning using NxLearn action
         // Learn source MAC from internal port for reverse path
-        use rovs_openflow::nxm;
         use rovs_openflow::NxLearn;
+        use rovs_openflow::nxm;
 
         let learn_internal = NxLearn::new()
-            .idle_timeout(300)   // 5 minute timeout
+            .idle_timeout(300) // 5 minute timeout
             .priority(100)
-            .table(1)            // Install learned flows in table 1
+            .table(1) // Install learned flows in table 1
             // Match on destination MAC = learned source MAC
             .match_field(nxm::ETH_SRC, nxm::ETH_DST, 48)
             // Output to learned input port
@@ -188,9 +182,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .priority(100)
             .match_fields(Match::new().in_port(INTERNAL_PORT))
             .actions(
-                ActionList::new()
-                    .learn(learn_internal)
-                    .resubmit_table(2),  // Continue to zone classification
+                ActionList::new().learn(learn_internal).resubmit_table(2), // Continue to zone classification
             );
 
         conn.send_flow_sync(&mac_learn).await?;
@@ -218,10 +210,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Table 1: Learned MAC forwarding (populated by learn action)
     // Default: flood unknown unicast
-    let flood_unknown = Flow::add()
-        .table(1)
-        .priority(0)
-        .actions(ActionList::new()); // Empty = continue
+    let flood_unknown = Flow::add().table(1).priority(0).actions(ActionList::new()); // Empty = continue
 
     conn.send_flow_sync(&flood_unknown).await?;
     println!("  Table 1: default -> continue (learned flows here)");
@@ -238,11 +227,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let ct_ipv4_internal = Flow::add()
         .table(2)
         .priority(100)
-        .match_fields(
-            Match::new()
-                .in_port(INTERNAL_PORT)
-                .eth_type(0x0800),
-        )
+        .match_fields(Match::new().in_port(INTERNAL_PORT).eth_type(0x0800))
         .actions(ActionList::new().ct(0, CT_ZONE, Some(3)));
 
     conn.send_flow_sync(&ct_ipv4_internal).await?;
@@ -252,11 +237,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let ct_ipv6_internal = Flow::add()
         .table(2)
         .priority(100)
-        .match_fields(
-            Match::new()
-                .in_port(INTERNAL_PORT)
-                .eth_type(0x86dd),
-        )
+        .match_fields(Match::new().in_port(INTERNAL_PORT).eth_type(0x86dd))
         .actions(ActionList::new().ct(0, CT_ZONE, Some(3)));
 
     conn.send_flow_sync(&ct_ipv6_internal).await?;
@@ -266,11 +247,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let ct_ipv4_external = Flow::add()
         .table(2)
         .priority(100)
-        .match_fields(
-            Match::new()
-                .in_port(EXTERNAL_PORT)
-                .eth_type(0x0800),
-        )
+        .match_fields(Match::new().in_port(EXTERNAL_PORT).eth_type(0x0800))
         .actions(ActionList::new().ct(0, CT_ZONE, Some(3)));
 
     conn.send_flow_sync(&ct_ipv4_external).await?;
@@ -280,18 +257,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let ct_ipv6_external = Flow::add()
         .table(2)
         .priority(100)
-        .match_fields(
-            Match::new()
-                .in_port(EXTERNAL_PORT)
-                .eth_type(0x86dd),
-        )
+        .match_fields(Match::new().in_port(EXTERNAL_PORT).eth_type(0x86dd))
         .actions(ActionList::new().ct(0, CT_ZONE, Some(3)));
 
     conn.send_flow_sync(&ct_ipv6_external).await?;
     println!("  Table 2: in={EXTERNAL_PORT}, IPv6 -> ct(zone={CT_ZONE}, table=3)");
 
     // Default drop
-    conn.send_flow_sync(&Flow::add().table(2).priority(0).actions(ActionList::new().drop())).await?;
+    conn.send_flow_sync(
+        &Flow::add()
+            .table(2)
+            .priority(0)
+            .actions(ActionList::new().drop()),
+    )
+    .await?;
     println!("  Table 2: default -> DROP");
 
     // Table 3: CT state -> firewall
@@ -305,7 +284,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     .ct_state_masked(ct_state::TRK | ct_state::INV, ct_state::TRK | ct_state::INV),
             )
             .actions(ActionList::new().drop()),
-    ).await?;
+    )
+    .await?;
     println!("  Table 3: ct_state=+trk+inv -> DROP");
 
     // Established/Related -> firewall
@@ -318,7 +298,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     .ct_state_masked(ct_state::TRK | ct_state::EST, ct_state::TRK | ct_state::EST),
             )
             .actions(ActionList::new().resubmit_table(4)),
-    ).await?;
+    )
+    .await?;
     println!("  Table 3: ct_state=+trk+est -> resubmit(4)");
 
     conn.send_flow_sync(
@@ -330,7 +311,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     .ct_state_masked(ct_state::TRK | ct_state::REL, ct_state::TRK | ct_state::REL),
             )
             .actions(ActionList::new().resubmit_table(4)),
-    ).await?;
+    )
+    .await?;
     println!("  Table 3: ct_state=+trk+rel -> resubmit(4)");
 
     // New -> firewall
@@ -343,11 +325,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     .ct_state_masked(ct_state::TRK | ct_state::NEW, ct_state::TRK | ct_state::NEW),
             )
             .actions(ActionList::new().resubmit_table(4)),
-    ).await?;
+    )
+    .await?;
     println!("  Table 3: ct_state=+trk+new -> resubmit(4)");
 
     // Default drop
-    conn.send_flow_sync(&Flow::add().table(3).priority(0).actions(ActionList::new().drop())).await?;
+    conn.send_flow_sync(
+        &Flow::add()
+            .table(3)
+            .priority(0)
+            .actions(ActionList::new().drop()),
+    )
+    .await?;
     println!("  Table 3: default -> DROP");
 
     // ==========================================================================
@@ -368,7 +357,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     .ct_state_masked(ct_state::TRK | ct_state::EST, ct_state::TRK | ct_state::EST),
             )
             .actions(ActionList::new().resubmit_table(6)),
-    ).await?;
+    )
+    .await?;
     println!("  Table 4: established -> resubmit(6) (NAT)");
 
     // Related connections -> NAT table
@@ -381,7 +371,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     .ct_state_masked(ct_state::TRK | ct_state::REL, ct_state::TRK | ct_state::REL),
             )
             .actions(ActionList::new().resubmit_table(6)),
-    ).await?;
+    )
+    .await?;
     println!("  Table 4: related -> resubmit(6) (NAT)");
 
     // New outbound from internal -> allow
@@ -395,7 +386,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     .ct_state_masked(ct_state::TRK | ct_state::NEW, ct_state::TRK | ct_state::NEW),
             )
             .actions(ActionList::new().resubmit_table(6)),
-    ).await?;
+    )
+    .await?;
     println!("  Table 4: in={INTERNAL_PORT}, new -> resubmit(6) (allow outbound)");
 
     // New inbound: HTTP (80) -> allow
@@ -412,7 +404,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     .ct_state_masked(ct_state::TRK | ct_state::NEW, ct_state::TRK | ct_state::NEW),
             )
             .actions(ActionList::new().resubmit_table(6)),
-    ).await?;
+    )
+    .await?;
     println!("  Table 4: in={EXTERNAL_PORT}, tcp_dst=80, new -> ALLOW");
 
     // New inbound: HTTPS (443) -> allow
@@ -429,7 +422,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     .ct_state_masked(ct_state::TRK | ct_state::NEW, ct_state::TRK | ct_state::NEW),
             )
             .actions(ActionList::new().resubmit_table(6)),
-    ).await?;
+    )
+    .await?;
     println!("  Table 4: in={EXTERNAL_PORT}, tcp_dst=443, new -> ALLOW");
 
     // New inbound: SSH (22) -> allow
@@ -446,7 +440,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     .ct_state_masked(ct_state::TRK | ct_state::NEW, ct_state::TRK | ct_state::NEW),
             )
             .actions(ActionList::new().resubmit_table(6)),
-    ).await?;
+    )
+    .await?;
     println!("  Table 4: in={EXTERNAL_PORT}, tcp_dst=22, new -> ALLOW");
 
     // New inbound: ICMP echo -> allow
@@ -463,7 +458,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     .ct_state_masked(ct_state::TRK | ct_state::NEW, ct_state::TRK | ct_state::NEW),
             )
             .actions(ActionList::new().resubmit_table(6)),
-    ).await?;
+    )
+    .await?;
     println!("  Table 4: in={EXTERNAL_PORT}, ICMP echo, new -> ALLOW");
 
     // New inbound: ICMPv6 echo -> allow
@@ -480,7 +476,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     .ct_state_masked(ct_state::TRK | ct_state::NEW, ct_state::TRK | ct_state::NEW),
             )
             .actions(ActionList::new().resubmit_table(6)),
-    ).await?;
+    )
+    .await?;
     println!("  Table 4: in={EXTERNAL_PORT}, ICMPv6 echo, new -> ALLOW");
 
     // Block other new inbound
@@ -494,11 +491,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     .ct_state_masked(ct_state::TRK | ct_state::NEW, ct_state::TRK | ct_state::NEW),
             )
             .actions(ActionList::new().drop()),
-    ).await?;
+    )
+    .await?;
     println!("  Table 4: in={EXTERNAL_PORT}, new (other) -> DROP");
 
     // Default drop
-    conn.send_flow_sync(&Flow::add().table(4).priority(0).actions(ActionList::new().drop())).await?;
+    conn.send_flow_sync(
+        &Flow::add()
+            .table(4)
+            .priority(0)
+            .actions(ActionList::new().drop()),
+    )
+    .await?;
     println!("  Table 4: default -> DROP");
 
     // ==========================================================================
@@ -520,7 +524,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     .ct_state_masked(ct_state::TRK | ct_state::EST, ct_state::TRK | ct_state::EST),
             )
             .actions(ActionList::new().output(EXTERNAL_PORT)),
-    ).await?;
+    )
+    .await?;
     println!("  Table 6: in={INTERNAL_PORT}, established -> output:{EXTERNAL_PORT}");
 
     // Established inbound -> forward
@@ -534,11 +539,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     .ct_state_masked(ct_state::TRK | ct_state::EST, ct_state::TRK | ct_state::EST),
             )
             .actions(ActionList::new().output(INTERNAL_PORT)),
-    ).await?;
+    )
+    .await?;
     println!("  Table 6: in={EXTERNAL_PORT}, established -> output:{INTERNAL_PORT}");
 
     // New outbound IPv4 -> SNAT
-    let snat_v4 = NatConfig::snat(public_ipv4).port_range(10000, 65000).random();
+    let snat_v4 = NatConfig::snat(public_ipv4)
+        .port_range(10000, 65000)
+        .random();
     conn.send_flow_sync(
         &Flow::add()
             .table(6)
@@ -550,7 +558,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     .ct_state_masked(ct_state::TRK | ct_state::NEW, ct_state::TRK | ct_state::NEW),
             )
             .actions(ActionList::new().ct_nat(CT_COMMIT, CT_ZONE, Some(9), snat_v4)),
-    ).await?;
+    )
+    .await?;
     println!("  Table 6: in={INTERNAL_PORT}, IPv4, new -> SNAT to {public_ipv4}");
 
     // New outbound IPv6 -> SNAT (NAT66)
@@ -566,7 +575,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     .ct_state_masked(ct_state::TRK | ct_state::NEW, ct_state::TRK | ct_state::NEW),
             )
             .actions(ActionList::new().ct_nat(CT_COMMIT, CT_ZONE, Some(9), snat_v6)),
-    ).await?;
+    )
+    .await?;
     println!("  Table 6: in={INTERNAL_PORT}, IPv6, new -> SNAT to {public_ipv6}");
 
     // New inbound HTTP (80) -> DNAT to web server
@@ -584,7 +594,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     .ct_state_masked(ct_state::TRK | ct_state::NEW, ct_state::TRK | ct_state::NEW),
             )
             .actions(ActionList::new().ct_nat(CT_COMMIT, CT_ZONE, Some(9), dnat_http)),
-    ).await?;
+    )
+    .await?;
     println!("  Table 6: in={EXTERNAL_PORT}, tcp_dst=80, new -> DNAT to {web_server}:8080");
 
     // New inbound HTTPS (443) -> DNAT to web server
@@ -602,7 +613,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     .ct_state_masked(ct_state::TRK | ct_state::NEW, ct_state::TRK | ct_state::NEW),
             )
             .actions(ActionList::new().ct_nat(CT_COMMIT, CT_ZONE, Some(9), dnat_https)),
-    ).await?;
+    )
+    .await?;
     println!("  Table 6: in={EXTERNAL_PORT}, tcp_dst=443, new -> DNAT to {web_server}:8443");
 
     // New inbound SSH (22) -> DNAT to SSH server
@@ -620,7 +632,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     .ct_state_masked(ct_state::TRK | ct_state::NEW, ct_state::TRK | ct_state::NEW),
             )
             .actions(ActionList::new().ct_nat(CT_COMMIT, CT_ZONE, Some(9), dnat_ssh)),
-    ).await?;
+    )
+    .await?;
     println!("  Table 6: in={EXTERNAL_PORT}, tcp_dst=22, new -> DNAT to {ssh_server}:22");
 
     // New inbound ICMP -> commit without NAT
@@ -636,7 +649,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     .ct_state_masked(ct_state::TRK | ct_state::NEW, ct_state::TRK | ct_state::NEW),
             )
             .actions(ActionList::new().ct(CT_COMMIT, CT_ZONE, Some(9))),
-    ).await?;
+    )
+    .await?;
     println!("  Table 6: in={EXTERNAL_PORT}, ICMP, new -> ct(commit, table=9)");
 
     // New inbound ICMPv6 -> commit without NAT
@@ -652,11 +666,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     .ct_state_masked(ct_state::TRK | ct_state::NEW, ct_state::TRK | ct_state::NEW),
             )
             .actions(ActionList::new().ct(CT_COMMIT, CT_ZONE, Some(9))),
-    ).await?;
+    )
+    .await?;
     println!("  Table 6: in={EXTERNAL_PORT}, ICMPv6, new -> ct(commit, table=9)");
 
     // Default drop
-    conn.send_flow_sync(&Flow::add().table(6).priority(0).actions(ActionList::new().drop())).await?;
+    conn.send_flow_sync(
+        &Flow::add()
+            .table(6)
+            .priority(0)
+            .actions(ActionList::new().drop()),
+    )
+    .await?;
     println!("  Table 6: default -> DROP");
 
     // ==========================================================================
@@ -671,7 +692,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .priority(100)
             .match_fields(Match::new().in_port(INTERNAL_PORT))
             .actions(ActionList::new().output(EXTERNAL_PORT)),
-    ).await?;
+    )
+    .await?;
     println!("  Table 9: in={INTERNAL_PORT} -> output:{EXTERNAL_PORT}");
 
     conn.send_flow_sync(
@@ -680,7 +702,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .priority(100)
             .match_fields(Match::new().in_port(EXTERNAL_PORT))
             .actions(ActionList::new().output(INTERNAL_PORT)),
-    ).await?;
+    )
+    .await?;
     println!("  Table 9: in={EXTERNAL_PORT} -> output:{INTERNAL_PORT}");
 
     // ==========================================================================
@@ -712,7 +735,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("\nTo verify the flows:");
     println!("  podman exec rovs-ovsdb-test ovs-ofctl dump-flows br-test -O OpenFlow13");
     println!("\nTo test ARP proxy, run a controller:");
-    println!("  CONTROLLER_ADDR=tcp:0.0.0.0:6653 cargo run -p rovs-ext --example arp_ndp_controller");
+    println!(
+        "  CONTROLLER_ADDR=tcp:0.0.0.0:6653 cargo run -p rovs-ext --example arp_ndp_controller"
+    );
 
     if args.no_cleanup {
         println!("\nFlows left for inspection. Clean up with:");

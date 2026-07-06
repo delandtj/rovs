@@ -2,10 +2,10 @@
 //!
 //! Demonstrates dual-stack (IPv4 + IPv6) NAT configuration.
 
-use std::net::{Ipv4Addr, Ipv6Addr};
 use rovs_ext::flows::{DnatConfig, DnatService, SnatConfig, SnatGateway};
 use rovs_openflow::VConn;
 use rovs_transport::Address;
+use std::net::{Ipv4Addr, Ipv6Addr};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -21,11 +21,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         SnatConfig::dual_stack(
             Ipv4Addr::new(203, 0, 113, 1),
             Ipv6Addr::new(0x2001, 0xdb8, 0, 0, 0, 0, 0, 1),
-            1,  // internal port
-            2,  // external port
+            1, // internal port
+            2, // external port
         )
         .zone(1)
-        .port_range(10000, 65000)
+        .port_range(10000, 65000),
     );
     snat.install(&mut conn, 0, 100).await?;
     println!("Installed dual-stack SNAT flows in tables 0-2");
@@ -41,7 +41,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .forward_tcp(443, Ipv4Addr::new(192, 168, 1, 10), 8443)
             // IPv6 rules
             .forward_tcp_v6(80, Ipv6Addr::new(0x2001, 0xdb8, 0, 0, 0, 0, 0, 10), 8080)
-            .forward_tcp_v6(443, Ipv6Addr::new(0x2001, 0xdb8, 0, 0, 0, 0, 0, 10), 8443)
+            .forward_tcp_v6(443, Ipv6Addr::new(0x2001, 0xdb8, 0, 0, 0, 0, 0, 10), 8443),
     );
     dnat.install(&mut conn, 10, 100).await?;
     println!("\nInstalled dual-stack DNAT flows in tables 10-12");

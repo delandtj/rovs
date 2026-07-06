@@ -5,10 +5,10 @@
 
 use bytes::{BufMut, BytesMut};
 
+use crate::Version;
 use crate::action::ActionList;
 use crate::message::{Header, Message, MessageType};
 use crate::packet_in::OFP_NO_BUFFER;
-use crate::Version;
 
 /// Special input port value meaning "controller".
 pub const OFPP_CONTROLLER: u32 = 0xffff_fffd;

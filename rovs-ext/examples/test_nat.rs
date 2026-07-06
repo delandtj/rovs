@@ -11,7 +11,7 @@
 
 use std::net::Ipv4Addr;
 
-use rovs_openflow::{ActionList, Flow, Match, NatConfig, VConn, CT_COMMIT};
+use rovs_openflow::{ActionList, CT_COMMIT, Flow, Match, NatConfig, VConn};
 use rovs_transport::Address;
 
 #[tokio::main]
@@ -54,10 +54,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Test 3: SNAT with IP range
     println!("\nTest 3: SNAT with IP range (10.0.0.1-10.0.0.10)...");
-    let nat_config = NatConfig::snat_range(
-        Ipv4Addr::new(10, 0, 0, 1),
-        Ipv4Addr::new(10, 0, 0, 10),
-    );
+    let nat_config = NatConfig::snat_range(Ipv4Addr::new(10, 0, 0, 1), Ipv4Addr::new(10, 0, 0, 10));
     let flow3 = Flow::add()
         .table(10)
         .priority(98)
@@ -112,8 +109,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     for f in flows.iter().filter(|f| f.table_id == 10) {
         println!(
             "  priority={} in_port={:?}",
-            f.priority,
-            f.match_fields.in_port
+            f.priority, f.match_fields.in_port
         );
     }
 

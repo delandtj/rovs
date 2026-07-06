@@ -1,7 +1,7 @@
 //! High-level OVS client.
 
-use rovs_ovsdb::{Client, Transaction};
 use rovs_openflow::VConn;
+use rovs_ovsdb::{Client, Transaction};
 use rovs_transport::Address;
 
 use crate::{Bridge, Error, Flow, Port, Result};
@@ -54,20 +54,18 @@ impl OvsClient {
             .ovsdb
             .idl()
             .rows("Bridge")
-            .map(|row| {
-                Bridge {
-                    uuid: row.uuid,
-                    name: row.get_string("name").unwrap_or_default().to_owned(),
-                    datapath_id: row.get_string("datapath_id").map(|s| s.to_owned()),
-                    datapath_type: row
-                        .get_string("datapath_type")
-                        .unwrap_or_default()
-                        .to_owned(),
-                    ports: Vec::new(),
-                    fail_mode: row.get_string("fail_mode").map(|s| s.to_owned()),
-                    stp_enable: row.get_bool("stp_enable").unwrap_or(false),
-                    controller: Vec::new(),
-                }
+            .map(|row| Bridge {
+                uuid: row.uuid,
+                name: row.get_string("name").unwrap_or_default().to_owned(),
+                datapath_id: row.get_string("datapath_id").map(|s| s.to_owned()),
+                datapath_type: row
+                    .get_string("datapath_type")
+                    .unwrap_or_default()
+                    .to_owned(),
+                ports: Vec::new(),
+                fail_mode: row.get_string("fail_mode").map(|s| s.to_owned()),
+                stp_enable: row.get_bool("stp_enable").unwrap_or(false),
+                controller: Vec::new(),
             })
             .collect();
 
@@ -141,7 +139,10 @@ impl OvsClient {
     /// Dump all flows from a bridge.
     ///
     /// Note: This creates a new OpenFlow connection for each call.
-    pub async fn dump_flows(&mut self, _bridge: &str) -> Result<Vec<rovs_openflow::FlowStatsEntry>> {
+    pub async fn dump_flows(
+        &mut self,
+        _bridge: &str,
+    ) -> Result<Vec<rovs_openflow::FlowStatsEntry>> {
         let mut conn = VConn::connect(&self.openflow_addr).await?;
         let flows = conn.dump_flows().await?;
         Ok(flows)

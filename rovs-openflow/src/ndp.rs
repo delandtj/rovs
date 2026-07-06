@@ -343,8 +343,8 @@ pub fn build_na_reply(
     };
 
     // Build NA
-    let na = NeighborAdvertisement::new(our_ipv6, our_mac)
-        .solicited(!ns_ipv6.src_addr.is_unspecified());
+    let na =
+        NeighborAdvertisement::new(our_ipv6, our_mac).solicited(!ns_ipv6.src_addr.is_unspecified());
 
     let mut icmpv6_data = na.encode_icmpv6();
 

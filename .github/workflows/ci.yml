@@ -73,7 +73,8 @@ jobs:
       - name: Run integration tests
         env:
           OVSDB_ADDR: unix:/tmp/ovs-test/db.sock
-        run: cargo test -- --ignored
+        # rovs-openflow is excluded: its tests need OPENFLOW_ADDR and a running ovs-vswitchd
+        run: cargo test --workspace --exclude rovs-openflow -- --ignored --test-threads=1
 
   examples:
     name: Run Examples

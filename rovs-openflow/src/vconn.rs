@@ -6,8 +6,8 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use rovs_transport::{Address, Stream};
 
 use crate::error::OfError;
-use crate::flow_monitor::{parse_flow_monitor_reply, FlowMonitorRequest, FlowUpdate};
-use crate::multipart::{parse_flow_stats_reply, FlowStatsEntry, FlowStatsRequest};
+use crate::flow_monitor::{FlowMonitorRequest, FlowUpdate, parse_flow_monitor_reply};
+use crate::multipart::{FlowStatsEntry, FlowStatsRequest, parse_flow_stats_reply};
 use crate::packet_in::PacketIn;
 use crate::packet_out::PacketOut;
 use crate::{Error, Flow, Header, Message, MessageType, Result, Version};
@@ -132,8 +132,12 @@ impl VConn {
 
         // Send barrier
         let barrier_xid = self.next_xid();
-        let barrier_msg =
-            Message::new(self.version, MessageType::BarrierRequest, barrier_xid, Bytes::new());
+        let barrier_msg = Message::new(
+            self.version,
+            MessageType::BarrierRequest,
+            barrier_xid,
+            Bytes::new(),
+        );
         self.send_message(&barrier_msg).await?;
 
         // Wait for response - could be error or barrier reply
@@ -344,10 +348,7 @@ impl VConn {
     ///
     /// Use a dedicated VConn for monitoring — the monitor produces a
     /// continuous stream that occupies the connection's recv path.
-    pub async fn monitor_flows(
-        &mut self,
-        request: FlowMonitorRequest,
-    ) -> Result<Vec<FlowUpdate>> {
+    pub async fn monitor_flows(&mut self, request: FlowMonitorRequest) -> Result<Vec<FlowUpdate>> {
         let xid = self.next_xid();
         let msg = request.to_message(self.version, xid);
         self.send_message(&msg).await?;

@@ -30,7 +30,7 @@
 
 use clap::Parser;
 use rovs_openflow::oxm::ct_state;
-use rovs_openflow::{ActionList, Flow, Match, VConn, CT_COMMIT};
+use rovs_openflow::{ActionList, CT_COMMIT, Flow, Match, VConn};
 use rovs_transport::Address;
 
 #[derive(Parser)]
@@ -72,17 +72,10 @@ const EXTERNAL_PORT: u32 = 3;
 const CT_ZONE: u16 = 10;
 
 // Services allowed from external to DMZ
-const DMZ_SERVICES: &[(u8, u16, &str)] = &[
-    (6, 80, "HTTP"),
-    (6, 443, "HTTPS"),
-    (6, 22, "SSH"),
-];
+const DMZ_SERVICES: &[(u8, u16, &str)] = &[(6, 80, "HTTP"), (6, 443, "HTTPS"), (6, 22, "SSH")];
 
 // Services allowed from DMZ to internal (limited)
-const DMZ_TO_INTERNAL_SERVICES: &[(u8, u16, &str)] = &[
-    (6, 3306, "MySQL"),
-    (6, 5432, "PostgreSQL"),
-];
+const DMZ_TO_INTERNAL_SERVICES: &[(u8, u16, &str)] = &[(6, 3306, "MySQL"), (6, 5432, "PostgreSQL")];
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -159,7 +152,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("  ARP -> NORMAL");
 
     // Default drop
-    conn.send_flow_sync(&Flow::add().table(0).priority(0).actions(ActionList::new().drop())).await?;
+    conn.send_flow_sync(
+        &Flow::add()
+            .table(0)
+            .priority(0)
+            .actions(ActionList::new().drop()),
+    )
+    .await?;
     println!("  default -> DROP");
 
     // ==========================================================================
@@ -189,7 +188,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("  IPv6 -> ct(zone={CT_ZONE}, table=2)");
 
     // Default drop
-    conn.send_flow_sync(&Flow::add().table(1).priority(0).actions(ActionList::new().drop())).await?;
+    conn.send_flow_sync(
+        &Flow::add()
+            .table(1)
+            .priority(0)
+            .actions(ActionList::new().drop()),
+    )
+    .await?;
     println!("  default -> DROP");
 
     // ==========================================================================
@@ -214,7 +219,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // --- Established/Related: ALLOW (all zones) ---
     // These are bidirectional for all zone pairs
-    for &(port, zone_name) in &[(INTERNAL_PORT, "INT"), (DMZ_PORT, "DMZ"), (EXTERNAL_PORT, "EXT")] {
+    for &(port, zone_name) in &[
+        (INTERNAL_PORT, "INT"),
+        (DMZ_PORT, "DMZ"),
+        (EXTERNAL_PORT, "EXT"),
+    ] {
         let allow_est = Flow::add()
             .table(2)
             .priority(150)
@@ -354,8 +363,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .ct_state_masked(ct_state::TRK | ct_state::NEW, ct_state::TRK | ct_state::NEW),
         )
         .actions(
-            ActionList::new()
-                .controller(128) // Send first 128 bytes to controller for logging
+            ActionList::new().controller(128), // Send first 128 bytes to controller for logging
         );
 
     conn.send_flow_sync(&ext_to_int_log).await?;
@@ -375,7 +383,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("  default new -> DROP (implicit deny)");
 
     // Default drop for anything else
-    conn.send_flow_sync(&Flow::add().table(2).priority(0).actions(ActionList::new().drop())).await?;
+    conn.send_flow_sync(
+        &Flow::add()
+            .table(2)
+            .priority(0)
+            .actions(ActionList::new().drop()),
+    )
+    .await?;
     println!("  default -> DROP");
 
     // ==========================================================================
@@ -391,9 +405,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .table(3)
         .priority(110)
         .match_fields(
-            Match::new()
-                .eth_type(0x0800)
-                .ip_proto(1), // ICMP
+            Match::new().eth_type(0x0800).ip_proto(1), // ICMP
         )
         .actions(ActionList::new().resubmit_table(4));
 
@@ -405,9 +417,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .table(3)
         .priority(110)
         .match_fields(
-            Match::new()
-                .eth_type(0x86dd)
-                .ip_proto(58), // ICMPv6
+            Match::new().eth_type(0x86dd).ip_proto(58), // ICMPv6
         )
         .actions(ActionList::new().resubmit_table(4));
 

@@ -3,7 +3,7 @@
 use std::fmt;
 use std::net::{Ipv4Addr, Ipv6Addr};
 
-use crate::oxm::{self, ct_state, OxmClass, OxmField};
+use crate::oxm::{self, OxmClass, OxmField, ct_state};
 
 /// MAC address type.
 pub type MacAddr = [u8; 6];
@@ -425,14 +425,30 @@ fn format_mac(mac: MacAddr) -> String {
 /// Format ct_state flags using OVS `+flag` notation.
 fn format_ct_state(state: u32) -> String {
     let mut parts = Vec::new();
-    if state & ct_state::TRK != 0 { parts.push("+trk"); }
-    if state & ct_state::NEW != 0 { parts.push("+new"); }
-    if state & ct_state::EST != 0 { parts.push("+est"); }
-    if state & ct_state::REL != 0 { parts.push("+rel"); }
-    if state & ct_state::RPL != 0 { parts.push("+rpl"); }
-    if state & ct_state::INV != 0 { parts.push("+inv"); }
-    if state & ct_state::SNAT != 0 { parts.push("+snat"); }
-    if state & ct_state::DNAT != 0 { parts.push("+dnat"); }
+    if state & ct_state::TRK != 0 {
+        parts.push("+trk");
+    }
+    if state & ct_state::NEW != 0 {
+        parts.push("+new");
+    }
+    if state & ct_state::EST != 0 {
+        parts.push("+est");
+    }
+    if state & ct_state::REL != 0 {
+        parts.push("+rel");
+    }
+    if state & ct_state::RPL != 0 {
+        parts.push("+rpl");
+    }
+    if state & ct_state::INV != 0 {
+        parts.push("+inv");
+    }
+    if state & ct_state::SNAT != 0 {
+        parts.push("+snat");
+    }
+    if state & ct_state::DNAT != 0 {
+        parts.push("+dnat");
+    }
     if parts.is_empty() {
         format!("0x{state:x}")
     } else {
@@ -736,13 +752,7 @@ impl Match {
 
     /// Decode an OXM field (OpenFlow Basic class).
     #[allow(clippy::too_many_lines)]
-    fn decode_oxm_field(
-        m: &mut Match,
-        field: u8,
-        has_mask: bool,
-        value: &[u8],
-        value_len: usize,
-    ) {
+    fn decode_oxm_field(m: &mut Match, field: u8, has_mask: bool, value: &[u8], value_len: usize) {
         match field {
             f if f == OxmField::InPort as u8 => {
                 if value_len >= 4 {
@@ -751,19 +761,20 @@ impl Match {
             }
             f if f == OxmField::InPhyPort as u8 => {
                 if value_len >= 4 {
-                    m.in_phy_port = Some(u32::from_be_bytes([value[0], value[1], value[2], value[3]]));
+                    m.in_phy_port =
+                        Some(u32::from_be_bytes([value[0], value[1], value[2], value[3]]));
                 }
             }
             f if f == OxmField::Metadata as u8 => {
                 if value_len >= 8 {
                     m.metadata = Some(u64::from_be_bytes([
-                        value[0], value[1], value[2], value[3],
-                        value[4], value[5], value[6], value[7],
+                        value[0], value[1], value[2], value[3], value[4], value[5], value[6],
+                        value[7],
                     ]));
                     if has_mask && value.len() >= 16 {
                         m.metadata_mask = Some(u64::from_be_bytes([
-                            value[8], value[9], value[10], value[11],
-                            value[12], value[13], value[14], value[15],
+                            value[8], value[9], value[10], value[11], value[12], value[13],
+                            value[14], value[15],
                         ]));
                     }
                 }
@@ -949,14 +960,15 @@ impl Match {
             }
             f if f == OxmField::Ipv6Flabel as u8 => {
                 if value_len >= 4 {
-                    m.ipv6_flabel = Some(u32::from_be_bytes([value[0], value[1], value[2], value[3]]));
+                    m.ipv6_flabel =
+                        Some(u32::from_be_bytes([value[0], value[1], value[2], value[3]]));
                 }
             }
             f if f == OxmField::TunnelId as u8 => {
                 if value_len >= 8 {
                     m.tunnel_id = Some(u64::from_be_bytes([
-                        value[0], value[1], value[2], value[3],
-                        value[4], value[5], value[6], value[7],
+                        value[0], value[1], value[2], value[3], value[4], value[5], value[6],
+                        value[7],
                     ]));
                 }
             }
@@ -974,13 +986,7 @@ impl Match {
     ///   5=IP_TOS, 6=IP_PROTO, 7=IP_SRC, 8=IP_DST, 9=TCP_SRC,
     ///   10=TCP_DST, 11=UDP_SRC, 12=UDP_DST, 13=ICMP_TYPE, 14=ICMP_CODE,
     ///   15=ARP_OP, 16=ARP_SPA, 17=ARP_TPA
-    fn decode_nxm0_field(
-        m: &mut Match,
-        field: u8,
-        has_mask: bool,
-        value: &[u8],
-        value_len: usize,
-    ) {
+    fn decode_nxm0_field(m: &mut Match, field: u8, has_mask: bool, value: &[u8], value_len: usize) {
         match field {
             // NXM_OF_IN_PORT (2 bytes, stored as u32 in Match)
             0 if value_len >= 2 => {
@@ -1088,30 +1094,20 @@ impl Match {
         }
     }
 
-    fn decode_nxm_field(
-        m: &mut Match,
-        field: u8,
-        has_mask: bool,
-        value: &[u8],
-        value_len: usize,
-    ) {
+    fn decode_nxm_field(m: &mut Match, field: u8, has_mask: bool, value: &[u8], value_len: usize) {
         match field {
             // NXM1 field 16 is TUN_ID
             16 if value_len >= 8 => {
                 m.tunnel_id = Some(u64::from_be_bytes([
-                    value[0], value[1], value[2], value[3],
-                    value[4], value[5], value[6], value[7],
+                    value[0], value[1], value[2], value[3], value[4], value[5], value[6], value[7],
                 ]));
             }
             // CT_STATE = 105
             105 if value_len >= 4 => {
-                m.ct_state = Some(u32::from_be_bytes([
-                    value[0], value[1], value[2], value[3],
-                ]));
+                m.ct_state = Some(u32::from_be_bytes([value[0], value[1], value[2], value[3]]));
                 if has_mask && value.len() >= 8 {
-                    m.ct_state_mask = Some(u32::from_be_bytes([
-                        value[4], value[5], value[6], value[7],
-                    ]));
+                    m.ct_state_mask =
+                        Some(u32::from_be_bytes([value[4], value[5], value[6], value[7]]));
                 }
             }
             // CT_ZONE = 106
@@ -1120,13 +1116,10 @@ impl Match {
             }
             // CT_MARK = 107
             107 if value_len >= 4 => {
-                m.ct_mark = Some(u32::from_be_bytes([
-                    value[0], value[1], value[2], value[3],
-                ]));
+                m.ct_mark = Some(u32::from_be_bytes([value[0], value[1], value[2], value[3]]));
                 if has_mask && value.len() >= 8 {
-                    m.ct_mark_mask = Some(u32::from_be_bytes([
-                        value[4], value[5], value[6], value[7],
-                    ]));
+                    m.ct_mark_mask =
+                        Some(u32::from_be_bytes([value[4], value[5], value[6], value[7]]));
                 }
             }
             _ => {
@@ -1538,7 +1531,8 @@ fn encode_ipv6(field: u8, value: u128) -> Vec<u8> {
 fn encode_ipv6_masked(field: u8, value: u128, mask: u128) -> Vec<u8> {
     let mut buf = Vec::with_capacity(36);
     // OXM header: class=0x8000, field, has_mask=true, length=32
-    let oxm_header = ((OxmClass::OpenflowBasic as u32) << 16) | ((field as u32) << 9) | (1 << 8) | 32;
+    let oxm_header =
+        ((OxmClass::OpenflowBasic as u32) << 16) | ((field as u32) << 9) | (1 << 8) | 32;
     buf.extend(oxm_header.to_be_bytes());
     buf.extend(value.to_be_bytes());
     buf.extend(mask.to_be_bytes());
@@ -1580,7 +1574,7 @@ mod tests {
         // length = 12 (header + OXM)
         assert_eq!(&bytes[2..4], &[0x00, 0x0c]);
         // OXM header: class=0x8000, field=0 (InPort), has_mask=0, length=4
-        let expected_oxm: u32 = (0x8000 << 16) | (0 << 9) | 4;
+        let expected_oxm: u32 = (0x8000 << 16) | 4;
         assert_eq!(&bytes[4..8], &expected_oxm.to_be_bytes());
         // InPort value = 1
         assert_eq!(&bytes[8..12], &[0x00, 0x00, 0x00, 0x01]);
@@ -1824,10 +1818,8 @@ mod tests {
     #[test]
     fn encode_ct_state_masked() {
         use crate::oxm::ct_state;
-        let m = Match::new().ct_state_masked(
-            ct_state::TRK | ct_state::NEW,
-            ct_state::TRK | ct_state::NEW,
-        );
+        let m = Match::new()
+            .ct_state_masked(ct_state::TRK | ct_state::NEW, ct_state::TRK | ct_state::NEW);
         let bytes = m.encode();
         assert!(bytes.len() >= 8);
         assert_eq!(bytes.len() % 8, 0);
@@ -1843,7 +1835,7 @@ mod tests {
 
     #[test]
     fn encode_ct_mark() {
-        let m = Match::new().ct_mark(0xaabbccdd);
+        let m = Match::new().ct_mark(0xaabb_ccdd);
         let bytes = m.encode();
         assert!(bytes.len() >= 8);
         assert_eq!(bytes.len() % 8, 0);
@@ -1851,7 +1843,7 @@ mod tests {
 
     #[test]
     fn encode_ct_mark_masked() {
-        let m = Match::new().ct_mark_masked(0xff000000, 0xff000000);
+        let m = Match::new().ct_mark_masked(0xff00_0000, 0xff00_0000);
         let bytes = m.encode();
         assert!(bytes.len() >= 8);
         assert_eq!(bytes.len() % 8, 0);
@@ -1877,10 +1869,10 @@ mod tests {
 
     #[test]
     fn roundtrip_ct_mark() {
-        let original = Match::new().ct_mark(0x12345678);
+        let original = Match::new().ct_mark(0x1234_5678);
         let encoded = original.encode();
         let (decoded, _) = Match::decode(&encoded).unwrap();
-        assert_eq!(decoded.ct_mark, Some(0x12345678));
+        assert_eq!(decoded.ct_mark, Some(0x1234_5678));
     }
 
     #[test]

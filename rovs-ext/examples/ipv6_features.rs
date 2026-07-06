@@ -25,7 +25,7 @@ use std::net::Ipv6Addr;
 
 use clap::Parser;
 use rovs_openflow::oxm::ct_state;
-use rovs_openflow::{ActionList, Flow, Match, NatConfig, VConn, CT_COMMIT};
+use rovs_openflow::{ActionList, CT_COMMIT, Flow, Match, NatConfig, VConn};
 use rovs_transport::Address;
 
 #[derive(Parser)]
@@ -143,10 +143,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .table(1)
         .priority(100)
         .match_fields(
-            Match::new()
-                .eth_type(0x86dd)
-                .ip_proto(58)
-                .icmpv6_type(136), // Neighbor Advertisement
+            Match::new().eth_type(0x86dd).ip_proto(58).icmpv6_type(136), // Neighbor Advertisement
         )
         .actions(ActionList::new().normal());
 
@@ -158,10 +155,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .table(1)
         .priority(100)
         .match_fields(
-            Match::new()
-                .eth_type(0x86dd)
-                .ip_proto(58)
-                .icmpv6_type(133), // Router Solicitation
+            Match::new().eth_type(0x86dd).ip_proto(58).icmpv6_type(133), // Router Solicitation
         )
         .actions(ActionList::new().controller(0xffff));
 
@@ -173,10 +167,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .table(1)
         .priority(100)
         .match_fields(
-            Match::new()
-                .eth_type(0x86dd)
-                .ip_proto(58)
-                .icmpv6_type(134), // Router Advertisement
+            Match::new().eth_type(0x86dd).ip_proto(58).icmpv6_type(134), // Router Advertisement
         )
         .actions(ActionList::new().normal());
 
@@ -188,9 +179,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .table(1)
         .priority(90)
         .match_fields(
-            Match::new()
-                .eth_type(0x86dd)
-                .ip_proto(58), // All other ICMPv6
+            Match::new().eth_type(0x86dd).ip_proto(58), // All other ICMPv6
         )
         .actions(ActionList::new().resubmit_table(2));
 
@@ -498,7 +487,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .actions(ActionList::new().ct_nat(CT_COMMIT, CT_ZONE, Some(7), nat66_config.clone()));
 
     conn.send_flow_sync(&nat66_new_out).await?;
-    println!("  Table 6: in={INTERNAL_PORT}, IPv6, new -> ct(commit, nat=snat:{external_ipv6}, table=7)");
+    println!(
+        "  Table 6: in={INTERNAL_PORT}, IPv6, new -> ct(commit, nat=snat:{external_ipv6}, table=7)"
+    );
 
     // Established/related IPv6 from internal -> forward (NAT already applied)
     let nat66_est_out = Flow::add()

@@ -540,7 +540,11 @@ mod tests {
             .cookie(0xdead_beef)
             .idle_timeout(300)
             .hard_timeout(600)
-            .match_fields(Match::new().eth_type(0x0800).ipv4_dst("10.0.0.0".parse().unwrap(), 24))
+            .match_fields(
+                Match::new()
+                    .eth_type(0x0800)
+                    .ipv4_dst("10.0.0.0".parse().unwrap(), 24),
+            )
             .actions(ActionList::new().output(OutputPort::Port(1)));
 
         assert_eq!(flow.table_id, 5);

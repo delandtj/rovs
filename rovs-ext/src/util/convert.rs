@@ -133,9 +133,8 @@ pub fn parse_mac(s: &str) -> Result<[u8; 6]> {
 
     let mut mac = [0u8; 6];
     for (i, part) in parts.iter().enumerate() {
-        mac[i] = u8::from_str_radix(part, 16).map_err(|e| {
-            Error::InvalidMac(format!("invalid hex octet '{part}': {e}"))
-        })?;
+        mac[i] = u8::from_str_radix(part, 16)
+            .map_err(|e| Error::InvalidMac(format!("invalid hex octet '{part}': {e}")))?;
     }
 
     Ok(mac)

@@ -32,16 +32,18 @@ mod packet_in;
 mod packet_out;
 mod vconn;
 
-pub use action::{nxm, Action, ActionList, LearnSpec, NatConfig, NxLearn, OutputPort, CT_COMMIT};
+pub use action::{Action, ActionList, CT_COMMIT, LearnSpec, NatConfig, NxLearn, OutputPort, nxm};
 pub use error::{Error, OfError, OfErrorType};
 pub use flow::{Flow, FlowCommand, FlowFlags, FlowStats};
-pub use flow_monitor::{monitor_flags, FlowMonitorRequest, FlowUpdate, FlowUpdateEvent, FlowUpdateFull};
+pub use flow_monitor::{
+    FlowMonitorRequest, FlowUpdate, FlowUpdateEvent, FlowUpdateFull, monitor_flags,
+};
 pub use instruction::{Instruction, InstructionList};
 pub use match_fields::Match;
 pub use message::{Header, Message, MessageType};
 pub use multipart::{FlowStatsEntry, FlowStatsRequest, MultipartType};
-pub use packet_in::{PacketIn, PacketInReason, OFP_NO_BUFFER};
-pub use packet_out::{PacketOut, OFPP_CONTROLLER, OFPP_ANY};
+pub use packet_in::{OFP_NO_BUFFER, PacketIn, PacketInReason};
+pub use packet_out::{OFPP_ANY, OFPP_CONTROLLER, PacketOut};
 pub use vconn::VConn;
 
 pub type Result<T> = std::result::Result<T, Error>;

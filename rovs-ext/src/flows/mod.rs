@@ -23,6 +23,6 @@ pub use mac_nat::{MacNatConfig, MacNatFlows};
 pub use nat::{DnatConfig, DnatRule, DnatService, DnatTarget, SnatConfig, SnatGateway};
 pub use ndp_proxy::{NdpProxyBuilder, NdpProxyConfig, NdpProxyFlows};
 pub use vlan::{
-    forward_vlan_flow, pop_vlan_flow, push_vlan_flow, translate_vlan_flow, VlanAccessPort,
-    VlanConfig,
+    VlanAccessPort, VlanConfig, forward_vlan_flow, pop_vlan_flow, push_vlan_flow,
+    translate_vlan_flow,
 };

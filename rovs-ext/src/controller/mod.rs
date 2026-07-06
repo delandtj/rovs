@@ -49,7 +49,6 @@ pub struct ControllerConfig {
     pub log_unhandled: bool,
 }
 
-
 impl ControllerConfig {
     /// Create a new controller configuration.
     #[must_use]
@@ -107,8 +106,10 @@ impl Controller {
     /// This blocks forever, processing Packet-In events and dispatching
     /// them to registered handlers.
     pub async fn run(&mut self) -> Result<()> {
-        tracing::info!("Controller running, {} handlers registered",
-            self.dispatcher.handler_count());
+        tracing::info!(
+            "Controller running, {} handlers registered",
+            self.dispatcher.handler_count()
+        );
 
         loop {
             // Wait for Packet-In

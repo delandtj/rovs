@@ -32,8 +32,8 @@
 
 use std::net::{Ipv4Addr, Ipv6Addr};
 
-use rovs_openflow::{ActionList, Flow, Match, NatConfig, VConn, CT_COMMIT};
 use rovs_openflow::oxm::ct_state;
+use rovs_openflow::{ActionList, CT_COMMIT, Flow, Match, NatConfig, VConn};
 
 /// Configuration for SNAT gateway.
 #[derive(Debug, Clone)]
@@ -268,8 +268,10 @@ impl SnatGateway {
                 .table(policy_table)
                 .priority(priority + 10)
                 .match_fields(
-                    Match::new()
-                        .ct_state_masked(ct_state::TRK | ct_state::INV, ct_state::TRK | ct_state::INV),
+                    Match::new().ct_state_masked(
+                        ct_state::TRK | ct_state::INV,
+                        ct_state::TRK | ct_state::INV,
+                    ),
                 )
                 .actions(ActionList::new().drop()),
         );
@@ -282,7 +284,10 @@ impl SnatGateway {
                 .match_fields(
                     Match::new()
                         .in_port(self.config.internal_port)
-                        .ct_state_masked(ct_state::TRK | ct_state::EST, ct_state::TRK | ct_state::EST),
+                        .ct_state_masked(
+                            ct_state::TRK | ct_state::EST,
+                            ct_state::TRK | ct_state::EST,
+                        ),
                 )
                 .actions(ActionList::new().output(self.config.external_port)),
         );
@@ -295,7 +300,10 @@ impl SnatGateway {
                 .match_fields(
                     Match::new()
                         .in_port(self.config.external_port)
-                        .ct_state_masked(ct_state::TRK | ct_state::EST, ct_state::TRK | ct_state::EST),
+                        .ct_state_masked(
+                            ct_state::TRK | ct_state::EST,
+                            ct_state::TRK | ct_state::EST,
+                        ),
                 )
                 .actions(ActionList::new().output(self.config.internal_port)),
         );
@@ -310,9 +318,17 @@ impl SnatGateway {
                         Match::new()
                             .in_port(self.config.internal_port)
                             .eth_type(0x0800)
-                            .ct_state_masked(ct_state::TRK | ct_state::NEW, ct_state::TRK | ct_state::NEW),
+                            .ct_state_masked(
+                                ct_state::TRK | ct_state::NEW,
+                                ct_state::TRK | ct_state::NEW,
+                            ),
                     )
-                    .actions(ActionList::new().ct_nat(CT_COMMIT, zone, Some(output_table), nat_config)),
+                    .actions(ActionList::new().ct_nat(
+                        CT_COMMIT,
+                        zone,
+                        Some(output_table),
+                        nat_config,
+                    )),
             );
         }
 
@@ -326,9 +342,17 @@ impl SnatGateway {
                         Match::new()
                             .in_port(self.config.internal_port)
                             .eth_type(0x86dd)
-                            .ct_state_masked(ct_state::TRK | ct_state::NEW, ct_state::TRK | ct_state::NEW),
+                            .ct_state_masked(
+                                ct_state::TRK | ct_state::NEW,
+                                ct_state::TRK | ct_state::NEW,
+                            ),
                     )
-                    .actions(ActionList::new().ct_nat(CT_COMMIT, zone, Some(output_table), nat_config)),
+                    .actions(ActionList::new().ct_nat(
+                        CT_COMMIT,
+                        zone,
+                        Some(output_table),
+                        nat_config,
+                    )),
             );
         }
 
@@ -367,9 +391,12 @@ impl SnatGateway {
 
     /// Delete all SNAT gateway flows from the tables.
     pub async fn delete(&self, conn: &mut VConn, base_table: u8) -> rovs_openflow::Result<()> {
-        conn.send_flow_sync(&Flow::delete().table(base_table)).await?;
-        conn.send_flow_sync(&Flow::delete().table(base_table + 1)).await?;
-        conn.send_flow_sync(&Flow::delete().table(base_table + 2)).await?;
+        conn.send_flow_sync(&Flow::delete().table(base_table))
+            .await?;
+        conn.send_flow_sync(&Flow::delete().table(base_table + 1))
+            .await?;
+        conn.send_flow_sync(&Flow::delete().table(base_table + 2))
+            .await?;
         Ok(())
     }
 }
@@ -500,29 +527,53 @@ impl DnatConfig {
 
     /// Add a TCP port forwarding rule.
     #[must_use]
-    pub fn forward_tcp(mut self, external_port: u16, internal_ip: Ipv4Addr, internal_port: u16) -> Self {
-        self.rules.push(DnatRule::tcp(external_port, internal_ip, internal_port));
+    pub fn forward_tcp(
+        mut self,
+        external_port: u16,
+        internal_ip: Ipv4Addr,
+        internal_port: u16,
+    ) -> Self {
+        self.rules
+            .push(DnatRule::tcp(external_port, internal_ip, internal_port));
         self
     }
 
     /// Add a UDP port forwarding rule.
     #[must_use]
-    pub fn forward_udp(mut self, external_port: u16, internal_ip: Ipv4Addr, internal_port: u16) -> Self {
-        self.rules.push(DnatRule::udp(external_port, internal_ip, internal_port));
+    pub fn forward_udp(
+        mut self,
+        external_port: u16,
+        internal_ip: Ipv4Addr,
+        internal_port: u16,
+    ) -> Self {
+        self.rules
+            .push(DnatRule::udp(external_port, internal_ip, internal_port));
         self
     }
 
     /// Add a TCP port forwarding rule (IPv6).
     #[must_use]
-    pub fn forward_tcp_v6(mut self, external_port: u16, internal_ip: Ipv6Addr, internal_port: u16) -> Self {
-        self.rules.push(DnatRule::tcp_v6(external_port, internal_ip, internal_port));
+    pub fn forward_tcp_v6(
+        mut self,
+        external_port: u16,
+        internal_ip: Ipv6Addr,
+        internal_port: u16,
+    ) -> Self {
+        self.rules
+            .push(DnatRule::tcp_v6(external_port, internal_ip, internal_port));
         self
     }
 
     /// Add a UDP port forwarding rule (IPv6).
     #[must_use]
-    pub fn forward_udp_v6(mut self, external_port: u16, internal_ip: Ipv6Addr, internal_port: u16) -> Self {
-        self.rules.push(DnatRule::udp_v6(external_port, internal_ip, internal_port));
+    pub fn forward_udp_v6(
+        mut self,
+        external_port: u16,
+        internal_ip: Ipv6Addr,
+        internal_port: u16,
+    ) -> Self {
+        self.rules
+            .push(DnatRule::udp_v6(external_port, internal_ip, internal_port));
         self
     }
 
@@ -591,8 +642,10 @@ impl DnatService {
                 .table(policy_table)
                 .priority(priority + 10)
                 .match_fields(
-                    Match::new()
-                        .ct_state_masked(ct_state::TRK | ct_state::INV, ct_state::TRK | ct_state::INV),
+                    Match::new().ct_state_masked(
+                        ct_state::TRK | ct_state::INV,
+                        ct_state::TRK | ct_state::INV,
+                    ),
                 )
                 .actions(ActionList::new().drop()),
         );
@@ -605,7 +658,10 @@ impl DnatService {
                 .match_fields(
                     Match::new()
                         .in_port(self.config.external_port)
-                        .ct_state_masked(ct_state::TRK | ct_state::EST, ct_state::TRK | ct_state::EST),
+                        .ct_state_masked(
+                            ct_state::TRK | ct_state::EST,
+                            ct_state::TRK | ct_state::EST,
+                        ),
                 )
                 .actions(ActionList::new().output(self.config.internal_port)),
         );
@@ -617,7 +673,10 @@ impl DnatService {
                 .match_fields(
                     Match::new()
                         .in_port(self.config.internal_port)
-                        .ct_state_masked(ct_state::TRK | ct_state::EST, ct_state::TRK | ct_state::EST),
+                        .ct_state_masked(
+                            ct_state::TRK | ct_state::EST,
+                            ct_state::TRK | ct_state::EST,
+                        ),
                 )
                 .actions(ActionList::new().output(self.config.external_port)),
         );
@@ -661,7 +720,12 @@ impl DnatService {
                     .table(policy_table)
                     .priority(priority)
                     .match_fields(match_fields)
-                    .actions(ActionList::new().ct_nat(CT_COMMIT, zone, Some(output_table), nat_config)),
+                    .actions(ActionList::new().ct_nat(
+                        CT_COMMIT,
+                        zone,
+                        Some(output_table),
+                        nat_config,
+                    )),
             );
         }
 
@@ -705,14 +769,10 @@ mod tests {
 
     #[test]
     fn snat_config_builder() {
-        let config = SnatConfig::new(
-            Ipv4Addr::new(10, 0, 0, 1),
-            1,
-            2,
-        )
-        .zone(5)
-        .port_range(5000, 6000)
-        .random();
+        let config = SnatConfig::new(Ipv4Addr::new(10, 0, 0, 1), 1, 2)
+            .zone(5)
+            .port_range(5000, 6000)
+            .random();
 
         assert_eq!(config.zone, 5);
         assert_eq!(config.port_range, Some((5000, 6000)));
@@ -742,8 +802,7 @@ mod tests {
 
     #[test]
     fn dnat_service_generates_flows() {
-        let config = DnatConfig::new(2, 1)
-            .forward_tcp(80, Ipv4Addr::new(192, 168, 1, 10), 8080);
+        let config = DnatConfig::new(2, 1).forward_tcp(80, Ipv4Addr::new(192, 168, 1, 10), 8080);
         let service = DnatService::new(config);
         let flows = service.all_flows(0, 100);
 
@@ -753,13 +812,9 @@ mod tests {
 
     #[test]
     fn snat_config_v6_builder() {
-        let config = SnatConfig::new_v6(
-            Ipv6Addr::new(0x2001, 0xdb8, 0, 0, 0, 0, 0, 1),
-            1,
-            2,
-        )
-        .zone(5)
-        .port_range(5000, 6000);
+        let config = SnatConfig::new_v6(Ipv6Addr::new(0x2001, 0xdb8, 0, 0, 0, 0, 0, 1), 1, 2)
+            .zone(5)
+            .port_range(5000, 6000);
 
         assert!(config.has_ipv6());
         assert!(!config.has_ipv4());
@@ -796,9 +851,11 @@ mod tests {
 
     #[test]
     fn dnat_config_v6_builder() {
-        let config = DnatConfig::new(2, 1)
-            .zone(3)
-            .forward_tcp_v6(80, Ipv6Addr::new(0x2001, 0xdb8, 0, 0, 0, 0, 0, 10), 8080);
+        let config = DnatConfig::new(2, 1).zone(3).forward_tcp_v6(
+            80,
+            Ipv6Addr::new(0x2001, 0xdb8, 0, 0, 0, 0, 0, 10),
+            8080,
+        );
 
         assert!(config.has_ipv6_rules());
         assert!(!config.has_ipv4_rules());

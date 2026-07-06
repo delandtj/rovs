@@ -3,7 +3,7 @@
 //! This module contains Nicira (now part of VMware/OVS) vendor extensions
 //! including learn, resubmit, connection tracking, move, and reg_load actions.
 
-use super::types::{NxActionSubtype, NICIRA_VENDOR_ID, ActionType};
+use super::types::{ActionType, NICIRA_VENDOR_ID, NxActionSubtype};
 
 /// Learn action flags.
 #[allow(dead_code)]
@@ -137,31 +137,48 @@ impl NxLearn {
 
     /// Add a spec to match a field from the packet.
     pub fn match_field(mut self, src_field: u32, dst_field: u32, n_bits: u16) -> Self {
-        self.specs.push(LearnSpec::MatchField { src_field, dst_field, n_bits });
+        self.specs.push(LearnSpec::MatchField {
+            src_field,
+            dst_field,
+            n_bits,
+        });
         self
     }
 
     /// Add a spec to match an immediate value.
     pub fn match_immediate(mut self, dst_field: u32, value: Vec<u8>, n_bits: u16) -> Self {
-        self.specs.push(LearnSpec::MatchImmediate { dst_field, value, n_bits });
+        self.specs.push(LearnSpec::MatchImmediate {
+            dst_field,
+            value,
+            n_bits,
+        });
         self
     }
 
     /// Add a spec to load a field from packet into action.
     pub fn load_field(mut self, src_field: u32, dst_field: u32, n_bits: u16) -> Self {
-        self.specs.push(LearnSpec::LoadField { src_field, dst_field, n_bits });
+        self.specs.push(LearnSpec::LoadField {
+            src_field,
+            dst_field,
+            n_bits,
+        });
         self
     }
 
     /// Add a spec to load an immediate value into action.
     pub fn load_immediate(mut self, dst_field: u32, value: Vec<u8>, n_bits: u16) -> Self {
-        self.specs.push(LearnSpec::LoadImmediate { dst_field, value, n_bits });
+        self.specs.push(LearnSpec::LoadImmediate {
+            dst_field,
+            value,
+            n_bits,
+        });
         self
     }
 
     /// Add a spec to output to port from field.
     pub fn output_field(mut self, src_field: u32, n_bits: u16) -> Self {
-        self.specs.push(LearnSpec::OutputField { src_field, n_bits });
+        self.specs
+            .push(LearnSpec::OutputField { src_field, n_bits });
         self
     }
 }
@@ -351,7 +368,12 @@ pub fn encode_nx_reg_load(reg_num: u8, value: u32, start_bit: u8, n_bits: u8) ->
 ///
 /// This is the more general form that accepts any NXM field header.
 /// Format: `load:value->NXM_field[ofs..ofs+n_bits]`
-pub(crate) fn encode_nx_reg_load_nxm(dst_field: u32, dst_ofs: u16, n_bits: u16, value: u64) -> Vec<u8> {
+pub(crate) fn encode_nx_reg_load_nxm(
+    dst_field: u32,
+    dst_ofs: u16,
+    n_bits: u16,
+    value: u64,
+) -> Vec<u8> {
     // reg_load uses subtype 7
     // Format: NX header (10) + ofs_nbits (2) + dst (4) + value (8)
     let mut buf = encode_nx_header(NxActionSubtype::RegLoad, 24);
@@ -480,21 +502,27 @@ fn encode_learn_specs(specs: &[LearnSpec]) -> Vec<u8> {
 
     for spec in specs {
         match spec {
-            LearnSpec::MatchField { src_field, dst_field, n_bits } => {
+            LearnSpec::MatchField {
+                src_field,
+                dst_field,
+                n_bits,
+            } => {
                 // Header: src=field, dst=match (bits 0-10 = n_bits - 1)
-                let header = learn_spec_header::SRC_FIELD
-                    | learn_spec_header::DST_MATCH
-                    | (n_bits - 1);
+                let header =
+                    learn_spec_header::SRC_FIELD | learn_spec_header::DST_MATCH | (n_bits - 1);
                 buf.extend(header.to_be_bytes());
                 // Encode src and dst as learn subfields (6 bytes each: 4 header + 2 offset)
                 encode_learn_subfield(&mut buf, *src_field, 0);
                 encode_learn_subfield(&mut buf, *dst_field, 0);
             }
-            LearnSpec::MatchImmediate { dst_field, value, n_bits } => {
+            LearnSpec::MatchImmediate {
+                dst_field,
+                value,
+                n_bits,
+            } => {
                 // Header: src=immediate, dst=match (bits 0-10 = n_bits - 1)
-                let header = learn_spec_header::SRC_IMMEDIATE
-                    | learn_spec_header::DST_MATCH
-                    | (n_bits - 1);
+                let header =
+                    learn_spec_header::SRC_IMMEDIATE | learn_spec_header::DST_MATCH | (n_bits - 1);
                 buf.extend(header.to_be_bytes());
                 // Immediate value (padded to 2-byte chunks)
                 let value_len = (*n_bits as usize).div_ceil(16) * 2;
@@ -505,21 +533,27 @@ fn encode_learn_specs(specs: &[LearnSpec]) -> Vec<u8> {
                 // Encode dst as learn subfield (6 bytes: 4 header + 2 offset)
                 encode_learn_subfield(&mut buf, *dst_field, 0);
             }
-            LearnSpec::LoadField { src_field, dst_field, n_bits } => {
+            LearnSpec::LoadField {
+                src_field,
+                dst_field,
+                n_bits,
+            } => {
                 // Header: src=field, dst=load (bits 0-10 = n_bits - 1)
-                let header = learn_spec_header::SRC_FIELD
-                    | learn_spec_header::DST_LOAD
-                    | (n_bits - 1);
+                let header =
+                    learn_spec_header::SRC_FIELD | learn_spec_header::DST_LOAD | (n_bits - 1);
                 buf.extend(header.to_be_bytes());
                 // Encode src and dst as learn subfields (6 bytes each: 4 header + 2 offset)
                 encode_learn_subfield(&mut buf, *src_field, 0);
                 encode_learn_subfield(&mut buf, *dst_field, 0);
             }
-            LearnSpec::LoadImmediate { dst_field, value, n_bits } => {
+            LearnSpec::LoadImmediate {
+                dst_field,
+                value,
+                n_bits,
+            } => {
                 // Header: src=immediate, dst=load (bits 0-10 = n_bits - 1)
-                let header = learn_spec_header::SRC_IMMEDIATE
-                    | learn_spec_header::DST_LOAD
-                    | (n_bits - 1);
+                let header =
+                    learn_spec_header::SRC_IMMEDIATE | learn_spec_header::DST_LOAD | (n_bits - 1);
                 buf.extend(header.to_be_bytes());
                 // Immediate value
                 let value_len = (*n_bits as usize).div_ceil(16) * 2;
@@ -532,9 +566,8 @@ fn encode_learn_specs(specs: &[LearnSpec]) -> Vec<u8> {
             }
             LearnSpec::OutputField { src_field, n_bits } => {
                 // Header: src=field, dst=output (bits 0-10 = n_bits - 1)
-                let header = learn_spec_header::SRC_FIELD
-                    | learn_spec_header::DST_OUTPUT
-                    | (n_bits - 1);
+                let header =
+                    learn_spec_header::SRC_FIELD | learn_spec_header::DST_OUTPUT | (n_bits - 1);
                 buf.extend(header.to_be_bytes());
                 // Encode src as learn subfield (6 bytes: 4 header + 2 offset)
                 encode_learn_subfield(&mut buf, *src_field, 0);
@@ -555,6 +588,7 @@ use crate::oxm::OxmClass;
 /// Decode Nicira experimenter action.
 ///
 /// The vendor ID has already been consumed. Data starts at subtype.
+#[allow(clippy::too_many_lines)]
 pub(crate) fn decode_nicira_action(data: &[u8]) -> crate::Result<Action> {
     if data.len() < 2 {
         return Err(crate::Error::Parse("nicira action too short".into()));
@@ -570,7 +604,11 @@ pub(crate) fn decode_nicira_action(data: &[u8]) -> crate::Result<Action> {
             }
             let in_port = u16::from_be_bytes([data[2], data[3]]);
             let table = data[4];
-            let port = if in_port == 0xfff8 { None } else { Some(in_port) };
+            let port = if in_port == 0xfff8 {
+                None
+            } else {
+                Some(in_port)
+            };
             let table = if table == 255 { None } else { Some(table) };
             Ok(Action::NxResubmit { port, table })
         }
@@ -580,7 +618,11 @@ pub(crate) fn decode_nicira_action(data: &[u8]) -> crate::Result<Action> {
                 return Err(crate::Error::Parse("resubmit action too short".into()));
             }
             let in_port = u16::from_be_bytes([data[2], data[3]]);
-            let port = if in_port == 0xfff8 { None } else { Some(in_port) };
+            let port = if in_port == 0xfff8 {
+                None
+            } else {
+                Some(in_port)
+            };
             Ok(Action::NxResubmit { port, table: None })
         }
         s if s == NxActionSubtype::Ct as u16 => {
@@ -592,7 +634,11 @@ pub(crate) fn decode_nicira_action(data: &[u8]) -> crate::Result<Action> {
             // zone_src at data[4..8]
             let zone = u16::from_be_bytes([data[8], data[9]]);
             let recirc_table = if data.len() > 10 { data[10] } else { 255 };
-            let table = if recirc_table == 255 { None } else { Some(recirc_table) };
+            let table = if recirc_table == 255 {
+                None
+            } else {
+                Some(recirc_table)
+            };
             Ok(Action::NxCt { flags, zone, table })
         }
         s if s == NxActionSubtype::RegLoad2 as u16 => {
@@ -614,8 +660,7 @@ pub(crate) fn decode_nicira_action(data: &[u8]) -> crate::Result<Action> {
             // NXM1 class, field 16 = tunnel ID
             if oxm_class == OxmClass::Nxm1 as u16 && field == 16 && length >= 8 {
                 let tun_id = u64::from_be_bytes([
-                    value[0], value[1], value[2], value[3],
-                    value[4], value[5], value[6], value[7],
+                    value[0], value[1], value[2], value[3], value[4], value[5], value[6], value[7],
                 ]);
                 Ok(Action::SetTunnelId(tun_id))
             } else {
@@ -633,8 +678,7 @@ pub(crate) fn decode_nicira_action(data: &[u8]) -> crate::Result<Action> {
             let hard_timeout = u16::from_be_bytes([data[4], data[5]]);
             let priority = u16::from_be_bytes([data[6], data[7]]);
             let cookie = u64::from_be_bytes([
-                data[8], data[9], data[10], data[11],
-                data[12], data[13], data[14], data[15],
+                data[8], data[9], data[10], data[11], data[12], data[13], data[14], data[15],
             ]);
             let flags = u16::from_be_bytes([data[16], data[17]]);
             let table_id = data[18];
@@ -673,6 +717,7 @@ pub(crate) fn decode_nicira_action(data: &[u8]) -> crate::Result<Action> {
 }
 
 /// Decode learn specs from wire format.
+#[allow(clippy::too_many_lines)]
 pub(crate) fn decode_learn_specs(data: &[u8]) -> Vec<LearnSpec> {
     let mut specs = Vec::new();
     let mut offset = 0;
@@ -696,15 +741,25 @@ pub(crate) fn decode_learn_specs(data: &[u8]) -> Vec<LearnSpec> {
                     break;
                 }
                 let src_field = u32::from_be_bytes([
-                    data[offset], data[offset + 1], data[offset + 2], data[offset + 3],
+                    data[offset],
+                    data[offset + 1],
+                    data[offset + 2],
+                    data[offset + 3],
                 ]);
                 // Skip 2-byte offset (currently unused in our API)
                 let dst_field = u32::from_be_bytes([
-                    data[offset + 6], data[offset + 7], data[offset + 8], data[offset + 9],
+                    data[offset + 6],
+                    data[offset + 7],
+                    data[offset + 8],
+                    data[offset + 9],
                 ]);
                 // Skip 2-byte offset
                 offset += 12;
-                specs.push(LearnSpec::MatchField { src_field, dst_field, n_bits });
+                specs.push(LearnSpec::MatchField {
+                    src_field,
+                    dst_field,
+                    n_bits,
+                });
             }
             (1, 0) => {
                 // MatchImmediate: value (variable) + dst_subfield (6)
@@ -715,10 +770,17 @@ pub(crate) fn decode_learn_specs(data: &[u8]) -> Vec<LearnSpec> {
                 let value = data[offset..offset + value_len].to_vec();
                 offset += value_len;
                 let dst_field = u32::from_be_bytes([
-                    data[offset], data[offset + 1], data[offset + 2], data[offset + 3],
+                    data[offset],
+                    data[offset + 1],
+                    data[offset + 2],
+                    data[offset + 3],
                 ]);
                 offset += 6; // 4-byte header + 2-byte offset
-                specs.push(LearnSpec::MatchImmediate { dst_field, value, n_bits });
+                specs.push(LearnSpec::MatchImmediate {
+                    dst_field,
+                    value,
+                    n_bits,
+                });
             }
             (0, 1) => {
                 // LoadField: src_subfield (6) + dst_subfield (6)
@@ -726,13 +788,23 @@ pub(crate) fn decode_learn_specs(data: &[u8]) -> Vec<LearnSpec> {
                     break;
                 }
                 let src_field = u32::from_be_bytes([
-                    data[offset], data[offset + 1], data[offset + 2], data[offset + 3],
+                    data[offset],
+                    data[offset + 1],
+                    data[offset + 2],
+                    data[offset + 3],
                 ]);
                 let dst_field = u32::from_be_bytes([
-                    data[offset + 6], data[offset + 7], data[offset + 8], data[offset + 9],
+                    data[offset + 6],
+                    data[offset + 7],
+                    data[offset + 8],
+                    data[offset + 9],
                 ]);
                 offset += 12;
-                specs.push(LearnSpec::LoadField { src_field, dst_field, n_bits });
+                specs.push(LearnSpec::LoadField {
+                    src_field,
+                    dst_field,
+                    n_bits,
+                });
             }
             (1, 1) => {
                 // LoadImmediate: value (variable) + dst_subfield (6)
@@ -743,10 +815,17 @@ pub(crate) fn decode_learn_specs(data: &[u8]) -> Vec<LearnSpec> {
                 let value = data[offset..offset + value_len].to_vec();
                 offset += value_len;
                 let dst_field = u32::from_be_bytes([
-                    data[offset], data[offset + 1], data[offset + 2], data[offset + 3],
+                    data[offset],
+                    data[offset + 1],
+                    data[offset + 2],
+                    data[offset + 3],
                 ]);
                 offset += 6; // 4-byte header + 2-byte offset
-                specs.push(LearnSpec::LoadImmediate { dst_field, value, n_bits });
+                specs.push(LearnSpec::LoadImmediate {
+                    dst_field,
+                    value,
+                    n_bits,
+                });
             }
             (0, 2) => {
                 // OutputField: src_subfield (6)
@@ -754,7 +833,10 @@ pub(crate) fn decode_learn_specs(data: &[u8]) -> Vec<LearnSpec> {
                     break;
                 }
                 let src_field = u32::from_be_bytes([
-                    data[offset], data[offset + 1], data[offset + 2], data[offset + 3],
+                    data[offset],
+                    data[offset + 1],
+                    data[offset + 2],
+                    data[offset + 3],
                 ]);
                 offset += 6; // 4-byte header + 2-byte offset
                 specs.push(LearnSpec::OutputField { src_field, n_bits });

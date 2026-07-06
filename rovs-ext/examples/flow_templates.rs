@@ -54,8 +54,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mac_nat_config = MacNatConfig::new(
         [0x02, 0x00, 0x00, 0x00, 0x00, 0x01], // internal MAC
         [0x02, 0x00, 0x00, 0x00, 0x00, 0x99], // external MAC (what external peers see)
-        1, // internal port
-        2, // external port
+        1,                                    // internal port
+        2,                                    // external port
     );
 
     let mac_nat = MacNatFlows::new(mac_nat_config);
@@ -88,8 +88,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("\n=== Learning Switch Flows ===");
 
     let learning_config = LearningConfig::new()
-        .learn_table(1)     // Learning happens in table 1
-        .forward_table(2)   // Forwarding decisions in table 2
+        .learn_table(1) // Learning happens in table 1
+        .forward_table(2) // Forwarding decisions in table 2
         .idle_timeout(300); // Learned entries expire after 5 minutes
 
     let learning_switch = LearningSwitchFlows::new(learning_config);

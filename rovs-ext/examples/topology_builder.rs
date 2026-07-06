@@ -40,8 +40,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("\n=== Bridge Pair ===");
 
-    let bridge_pair = BridgePair::new("br-rovs-int", "br-rovs-ext")
-        .secure_fail_mode(); // OpenFlow-only forwarding
+    let bridge_pair = BridgePair::new("br-rovs-int", "br-rovs-ext").secure_fail_mode(); // OpenFlow-only forwarding
 
     println!("Creating bridge pair: br-rovs-int <-> br-rovs-ext");
     bridge_pair.create(&mut client).await?;

@@ -9,10 +9,10 @@ use std::collections::HashMap;
 
 use rovs_openflow::{ActionList, PacketOut};
 
+use crate::Result;
 use crate::controller::event::PacketInEvent;
 use crate::controller::handler::{HandlerAction, HandlerContext, PacketHandler};
 use crate::util::format_ipv4;
-use crate::Result;
 
 /// ARP operation codes.
 const ARP_REQUEST: u16 = 1;
@@ -55,6 +55,7 @@ pub struct ArpPacket {
 
 impl ArpPacket {
     /// Parse an ARP packet from raw bytes (starting at ARP header).
+    #[allow(clippy::similar_names)] // sha/spa/tha/tpa are RFC 826 field names
     pub fn parse(data: &[u8]) -> Option<Self> {
         if data.len() < 28 {
             return None;
@@ -169,7 +170,12 @@ impl ArpProxyHandler {
 
     /// Build a full Ethernet+ARP reply packet.
     #[allow(clippy::unused_self)]
-    fn build_reply_packet(&self, event: &PacketInEvent, arp: &ArpPacket, reply_mac: [u8; 6]) -> Vec<u8> {
+    fn build_reply_packet(
+        &self,
+        event: &PacketInEvent,
+        arp: &ArpPacket,
+        reply_mac: [u8; 6],
+    ) -> Vec<u8> {
         let eth_src = event.eth_src().unwrap_or([0; 6]);
 
         let mut packet = Vec::with_capacity(14 + 28);
@@ -222,8 +228,12 @@ impl PacketHandler for ArpProxyHandler {
             tracing::debug!(
                 "ARP proxy: {} -> {:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}",
                 format_ipv4(&arp.tpa),
-                reply_mac[0], reply_mac[1], reply_mac[2],
-                reply_mac[3], reply_mac[4], reply_mac[5]
+                reply_mac[0],
+                reply_mac[1],
+                reply_mac[2],
+                reply_mac[3],
+                reply_mac[4],
+                reply_mac[5]
             );
 
             // Build and send reply

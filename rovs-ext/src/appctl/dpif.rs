@@ -43,7 +43,12 @@ impl fmt::Display for DpifFlow {
 
         write!(f, "{} => {actions_display}", self.key)?;
 
-        write!(f, "  [{}, {}", format_packets(self.packets), format_bytes(self.bytes))?;
+        write!(
+            f,
+            "  [{}, {}",
+            format_packets(self.packets),
+            format_bytes(self.bytes)
+        )?;
 
         match self.used {
             Some(secs) => write!(f, ", used {secs:.3}s ago]")?,

@@ -168,12 +168,14 @@ impl BridgePair {
         let mut txn = Transaction::new("Open_vSwitch");
 
         // Delete patch ports first
-        let patch1 = self.config.patch1_name.clone().unwrap_or_else(|| {
-            format!("patch-{}-to-{}", self.config.bridge1, self.config.bridge2)
-        });
-        let patch2 = self.config.patch2_name.clone().unwrap_or_else(|| {
-            format!("patch-{}-to-{}", self.config.bridge2, self.config.bridge1)
-        });
+        let patch1 =
+            self.config.patch1_name.clone().unwrap_or_else(|| {
+                format!("patch-{}-to-{}", self.config.bridge1, self.config.bridge2)
+            });
+        let patch2 =
+            self.config.patch2_name.clone().unwrap_or_else(|| {
+                format!("patch-{}-to-{}", self.config.bridge2, self.config.bridge1)
+            });
 
         txn.delete_port(&self.config.bridge1, &patch1);
         txn.delete_port(&self.config.bridge2, &patch2);
@@ -216,8 +218,7 @@ mod tests {
 
     #[test]
     fn custom_patch_names() {
-        let pair = BridgePair::new("br-int", "br-ext")
-            .patch_names("p-int", "p-ext");
+        let pair = BridgePair::new("br-int", "br-ext").patch_names("p-int", "p-ext");
         assert_eq!(pair.config().patch1_name, Some("p-int".to_owned()));
         assert_eq!(pair.config().patch2_name, Some("p-ext".to_owned()));
     }

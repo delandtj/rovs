@@ -35,7 +35,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Bridge row ref: {:?}", bridge_ref);
 
     // Add an internal port
-    let (port_ref, _iface_ref) = txn.add_internal_port("test-br0", "test-port1");
+    // Not "test-port1": that name is taken by the container entrypoint's br-test setup
+    let (port_ref, _iface_ref) = txn.add_internal_port("test-br0", "demo-port1");
     println!("Port row ref: {:?}", port_ref);
 
     // Add a VLAN port

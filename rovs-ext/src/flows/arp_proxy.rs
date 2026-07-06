@@ -3,10 +3,10 @@
 //! Provides flow builders for responding to ARP requests on behalf of
 //! a host, enabling Layer 2 proxy functionality.
 
-use rovs_openflow::{nxm, ActionList, Flow, Match, VConn};
+use rovs_openflow::{ActionList, Flow, Match, VConn, nxm};
 
-use crate::util::{ipv4_to_u32, mac_to_u64};
 use crate::Result;
+use crate::util::{ipv4_to_u32, mac_to_u64};
 
 /// Configuration for ARP proxy flows.
 #[derive(Debug, Clone)]
@@ -126,15 +126,13 @@ impl ArpProxyFlows {
 
     /// Delete ARP proxy flows from the switch.
     pub async fn delete(&self, conn: &mut VConn, table: u8) -> Result<()> {
-        let delete = Flow::delete()
-            .table(table)
-            .match_fields(
-                Match::new()
-                    .in_port(self.config.port)
-                    .eth_type(0x0806)
-                    .arp_op(1)
-                    .arp_tpa(self.config.ip),
-            );
+        let delete = Flow::delete().table(table).match_fields(
+            Match::new()
+                .in_port(self.config.port)
+                .eth_type(0x0806)
+                .arp_op(1)
+                .arp_tpa(self.config.ip),
+        );
         conn.send_flow_sync(&delete).await?;
         Ok(())
     }

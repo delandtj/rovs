@@ -55,12 +55,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .table(0)
         .priority(300)
         .match_fields(
-            Match::new()
-                .icmpv6_type(135), // Neighbor Solicitation
+            Match::new().icmpv6_type(135), // Neighbor Solicitation
         )
         .actions(
-            ActionList::new()
-                .controller(0xffff), // Send full packet to controller
+            ActionList::new().controller(0xffff), // Send full packet to controller
         );
 
     conn.send_flow_sync(&ndp_to_controller).await?;
@@ -117,7 +115,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         );
 
         // Get the input port from the Packet-In match
-        let in_port = packet_in.in_port().unwrap_or(0);
+        let in_port = packet_in.in_port();
 
         // Send the NA back out the same port
         let packet_out = PacketOut::new()
@@ -128,7 +126,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         conn.send_packet_out(&packet_out).await?;
         na_count += 1;
 
-        println!("    NA sent! (total: {} NS received, {} NA sent)", ns_count, na_count);
+        println!(
+            "    NA sent! (total: {} NS received, {} NA sent)",
+            ns_count, na_count
+        );
     }
 }
 

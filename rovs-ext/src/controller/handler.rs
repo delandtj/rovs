@@ -58,7 +58,10 @@ impl<'a> HandlerContext<'a> {
         data: Vec<u8>,
         actions: ActionList,
     ) -> Result<()> {
-        let packet_out = PacketOut::new().in_port(in_port).actions(actions).data(data);
+        let packet_out = PacketOut::new()
+            .in_port(in_port)
+            .actions(actions)
+            .data(data);
         self.send_packet_out(&packet_out).await
     }
 
