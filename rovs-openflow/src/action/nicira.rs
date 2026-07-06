@@ -473,7 +473,7 @@ pub(crate) fn encode_nx_learn(learn: &NxLearn) -> Vec<u8> {
 }
 
 /// Learn spec header bits.
-mod learn_spec_header {
+pub(crate) mod learn_spec_header {
     /// Match from field (src = packet field, dst = match field)
     pub const SRC_FIELD: u16 = 0 << 13;
     /// Match from immediate value
@@ -585,268 +585,253 @@ fn encode_learn_specs(specs: &[LearnSpec]) -> Vec<u8> {
 use super::Action;
 use crate::oxm::OxmClass;
 
-/// Decode Nicira experimenter action.
-///
-/// The vendor ID has already been consumed. Data starts at subtype.
-#[allow(clippy::too_many_lines)]
-pub(crate) fn decode_nicira_action(data: &[u8]) -> crate::Result<Action> {
-    if data.len() < 2 {
-        return Err(crate::Error::Parse("nicira action too short".into()));
+/// Bounds-checked cursor over a wire-format buffer.
+struct Cursor<'a> {
+    data: &'a [u8],
+    offset: usize,
+}
+
+impl<'a> Cursor<'a> {
+    fn new(data: &'a [u8]) -> Self {
+        Self { data, offset: 0 }
     }
 
-    let subtype = u16::from_be_bytes([data[0], data[1]]);
+    fn remaining(&self) -> usize {
+        self.data.len() - self.offset
+    }
 
-    match subtype {
-        s if s == NxActionSubtype::ResubmitTable as u16 => {
-            // Resubmit: subtype (2) + in_port (2) + table (1) + pad (3)
-            if data.len() < 6 {
-                return Err(crate::Error::Parse("resubmit action too short".into()));
-            }
-            let in_port = u16::from_be_bytes([data[2], data[3]]);
-            let table = data[4];
-            let port = if in_port == 0xfff8 {
-                None
-            } else {
-                Some(in_port)
-            };
-            let table = if table == 255 { None } else { Some(table) };
-            Ok(Action::NxResubmit { port, table })
+    /// Consume and return the next `n` bytes, or a parse error naming `what`.
+    fn take(&mut self, n: usize, what: &str) -> crate::Result<&'a [u8]> {
+        if self.remaining() < n {
+            return Err(crate::Error::Parse(format!("{what} truncated")));
         }
-        s if s == NxActionSubtype::Resubmit as u16 => {
-            // Simple resubmit: subtype (2) + in_port (2)
-            if data.len() < 4 {
-                return Err(crate::Error::Parse("resubmit action too short".into()));
-            }
-            let in_port = u16::from_be_bytes([data[2], data[3]]);
-            let port = if in_port == 0xfff8 {
-                None
-            } else {
-                Some(in_port)
-            };
-            Ok(Action::NxResubmit { port, table: None })
-        }
-        s if s == NxActionSubtype::Ct as u16 => {
-            // CT: subtype (2) + flags (2) + zone_src (4) + zone (2) + recirc_table (1) + ...
-            if data.len() < 10 {
-                return Err(crate::Error::Parse("ct action too short".into()));
-            }
-            let flags = u16::from_be_bytes([data[2], data[3]]);
-            // zone_src at data[4..8]
-            let zone = u16::from_be_bytes([data[8], data[9]]);
-            let recirc_table = if data.len() > 10 { data[10] } else { 255 };
-            let table = if recirc_table == 255 {
-                None
-            } else {
-                Some(recirc_table)
-            };
-            Ok(Action::NxCt { flags, zone, table })
-        }
-        s if s == NxActionSubtype::RegLoad2 as u16 => {
-            // RegLoad2: subtype (2) + OXM header (4) + value
-            if data.len() < 6 {
-                return Err(crate::Error::Parse("reg_load2 action too short".into()));
-            }
-            let oxm_header = u32::from_be_bytes([data[2], data[3], data[4], data[5]]);
-            let oxm_class = (oxm_header >> 16) as u16;
-            let field = ((oxm_header >> 9) & 0x7f) as u8;
-            let length = (oxm_header & 0xff) as usize;
+        let bytes = &self.data[self.offset..self.offset + n];
+        self.offset += n;
+        Ok(bytes)
+    }
 
-            if data.len() < 6 + length {
-                return Err(crate::Error::Parse("reg_load2 value truncated".into()));
-            }
+    /// Consume the rest of the buffer.
+    fn rest(&mut self) -> &'a [u8] {
+        let bytes = &self.data[self.offset..];
+        self.offset = self.data.len();
+        bytes
+    }
 
-            let value = &data[6..6 + length];
+    fn read_u8(&mut self, what: &str) -> crate::Result<u8> {
+        Ok(self.take(1, what)?[0])
+    }
 
-            // NXM1 class, field 16 = tunnel ID
-            if oxm_class == OxmClass::Nxm1 as u16 && field == 16 && length >= 8 {
-                let tun_id = u64::from_be_bytes([
-                    value[0], value[1], value[2], value[3], value[4], value[5], value[6], value[7],
-                ]);
-                Ok(Action::SetTunnelId(tun_id))
-            } else {
-                Ok(Action::Drop)
-            }
-        }
-        s if s == NxActionSubtype::Learn as u16 => {
-            // Learn: subtype (2) + idle_timeout (2) + hard_timeout (2) + priority (2)
-            //        + cookie (8) + flags (2) + table_id (1) + pad (1)
-            //        + fin_idle_timeout (2) + fin_hard_timeout (2) + specs (variable)
-            if data.len() < 22 {
-                return Err(crate::Error::Parse("learn action too short".into()));
-            }
-            let idle_timeout = u16::from_be_bytes([data[2], data[3]]);
-            let hard_timeout = u16::from_be_bytes([data[4], data[5]]);
-            let priority = u16::from_be_bytes([data[6], data[7]]);
-            let cookie = u64::from_be_bytes([
-                data[8], data[9], data[10], data[11], data[12], data[13], data[14], data[15],
-            ]);
-            let flags = u16::from_be_bytes([data[16], data[17]]);
-            let table_id = data[18];
-            // data[19] is padding
-            let fin_idle_timeout = u16::from_be_bytes([data[20], data[21]]);
-            let fin_hard_timeout = if data.len() > 23 {
-                u16::from_be_bytes([data[22], data[23]])
-            } else {
-                0
-            };
+    fn read_u16(&mut self, what: &str) -> crate::Result<u16> {
+        let b = self.take(2, what)?;
+        Ok(u16::from_be_bytes([b[0], b[1]]))
+    }
 
-            // Decode specs (simplified - full decoding would parse the spec headers)
-            let specs = if data.len() > 24 {
-                decode_learn_specs(&data[24..])
-            } else {
-                Vec::new()
-            };
+    fn read_u32(&mut self, what: &str) -> crate::Result<u32> {
+        let b = self.take(4, what)?;
+        Ok(u32::from_be_bytes([b[0], b[1], b[2], b[3]]))
+    }
 
-            Ok(Action::NxLearn(NxLearn {
-                idle_timeout,
-                hard_timeout,
-                priority,
-                cookie,
-                flags,
-                table_id,
-                fin_idle_timeout,
-                fin_hard_timeout,
-                specs,
-            }))
-        }
-        _ => {
-            // Unknown Nicira subtype
-            Ok(Action::Drop)
-        }
+    fn read_u64(&mut self, what: &str) -> crate::Result<u64> {
+        let b = self.take(8, what)?;
+        Ok(u64::from_be_bytes([
+            b[0], b[1], b[2], b[3], b[4], b[5], b[6], b[7],
+        ]))
+    }
+
+    /// Read a learn subfield reference: 4-byte NXM header + 2-byte bit offset.
+    /// The bit offset is not represented in our API, so it is skipped.
+    fn read_subfield(&mut self, what: &str) -> crate::Result<u32> {
+        let field = self.read_u32(what)?;
+        self.take(2, what)?; // bit offset
+        Ok(field)
     }
 }
 
-/// Decode learn specs from wire format.
-#[allow(clippy::too_many_lines)]
-pub(crate) fn decode_learn_specs(data: &[u8]) -> Vec<LearnSpec> {
-    let mut specs = Vec::new();
-    let mut offset = 0;
+/// Decode Nicira experimenter action.
+///
+/// The vendor ID has already been consumed. Data starts at subtype.
+pub(crate) fn decode_nicira_action(data: &[u8]) -> crate::Result<Action> {
+    let mut cur = Cursor::new(data);
+    let subtype = cur.read_u16("nicira action subtype")?;
 
-    while offset + 2 <= data.len() {
-        let header = u16::from_be_bytes([data[offset], data[offset + 1]]);
+    match subtype {
+        s if s == NxActionSubtype::ResubmitTable as u16 => decode_resubmit_table(&mut cur),
+        s if s == NxActionSubtype::Resubmit as u16 => decode_resubmit(&mut cur),
+        s if s == NxActionSubtype::Ct as u16 => decode_ct(&mut cur),
+        s if s == NxActionSubtype::RegLoad2 as u16 => decode_reg_load2(&mut cur),
+        s if s == NxActionSubtype::Learn as u16 => decode_learn(&mut cur),
+        // Unknown Nicira subtype
+        _ => Ok(Action::Drop),
+    }
+}
+
+/// Resubmit(table): in_port (2) + table (1) + pad (3).
+fn decode_resubmit_table(cur: &mut Cursor) -> crate::Result<Action> {
+    let in_port = cur.read_u16("resubmit action")?;
+    let table = cur.read_u8("resubmit action")?;
+    // 0xfff8 = OFPP_IN_PORT: "resubmit with the packet's original in_port"
+    let port = if in_port == 0xfff8 {
+        None
+    } else {
+        Some(in_port)
+    };
+    let table = if table == 255 { None } else { Some(table) };
+    Ok(Action::NxResubmit { port, table })
+}
+
+/// Simple resubmit: in_port (2).
+fn decode_resubmit(cur: &mut Cursor) -> crate::Result<Action> {
+    let in_port = cur.read_u16("resubmit action")?;
+    let port = if in_port == 0xfff8 {
+        None
+    } else {
+        Some(in_port)
+    };
+    Ok(Action::NxResubmit { port, table: None })
+}
+
+/// CT: flags (2) + zone_src (4) + zone (2) + optional recirc_table (1) + pad.
+fn decode_ct(cur: &mut Cursor) -> crate::Result<Action> {
+    let flags = cur.read_u16("ct action")?;
+    cur.take(4, "ct action")?; // zone_src (not represented in our API)
+    let zone = cur.read_u16("ct action")?;
+    // recirc_table may be absent on the wire; 255 means "no recirculation"
+    let recirc_table = if cur.remaining() > 0 {
+        cur.read_u8("ct action")?
+    } else {
+        255
+    };
+    let table = if recirc_table == 255 {
+        None
+    } else {
+        Some(recirc_table)
+    };
+    Ok(Action::NxCt { flags, zone, table })
+}
+
+/// RegLoad2: OXM header (4) + value (length from header).
+fn decode_reg_load2(cur: &mut Cursor) -> crate::Result<Action> {
+    let oxm_header = cur.read_u32("reg_load2 action")?;
+    let oxm_class = (oxm_header >> 16) as u16;
+    let field = ((oxm_header >> 9) & 0x7f) as u8;
+    let length = (oxm_header & 0xff) as usize;
+    let value = cur.take(length, "reg_load2 value")?;
+
+    // NXM1 class, field 16 = tunnel ID
+    if oxm_class == OxmClass::Nxm1 as u16 && field == 16 && length >= 8 {
+        let tun_id = u64::from_be_bytes([
+            value[0], value[1], value[2], value[3], value[4], value[5], value[6], value[7],
+        ]);
+        Ok(Action::SetTunnelId(tun_id))
+    } else {
+        Ok(Action::Drop)
+    }
+}
+
+/// Learn: idle_timeout (2) + hard_timeout (2) + priority (2) + cookie (8)
+/// + flags (2) + table_id (1) + pad (1) + fin_idle_timeout (2)
+/// + fin_hard_timeout (2) + specs (variable).
+fn decode_learn(cur: &mut Cursor) -> crate::Result<Action> {
+    let idle_timeout = cur.read_u16("learn action")?;
+    let hard_timeout = cur.read_u16("learn action")?;
+    let priority = cur.read_u16("learn action")?;
+    let cookie = cur.read_u64("learn action")?;
+    let flags = cur.read_u16("learn action")?;
+    let table_id = cur.read_u8("learn action")?;
+    cur.take(1, "learn action")?; // padding
+    let fin_idle_timeout = cur.read_u16("learn action")?;
+    // Older encodings omit the trailing fields
+    let fin_hard_timeout = if cur.remaining() >= 2 {
+        cur.read_u16("learn action")?
+    } else {
+        0
+    };
+
+    let specs = decode_learn_specs(cur.rest())?;
+
+    Ok(Action::NxLearn(NxLearn {
+        idle_timeout,
+        hard_timeout,
+        priority,
+        cookie,
+        flags,
+        table_id,
+        fin_idle_timeout,
+        fin_hard_timeout,
+        specs,
+    }))
+}
+
+/// Decode learn specs from wire format.
+///
+/// Stops at the zero header that marks end-of-specs (also produced by the
+/// trailing pad bytes of the 8-byte-aligned action). A truncated or unknown
+/// spec is a parse error rather than being silently dropped.
+pub(crate) fn decode_learn_specs(data: &[u8]) -> crate::Result<Vec<LearnSpec>> {
+    let mut cur = Cursor::new(data);
+    let mut specs = Vec::new();
+
+    while cur.remaining() >= 2 {
+        let header = cur.read_u16("learn spec header")?;
         if header == 0 {
-            break; // End of specs
+            break; // end of specs / padding
         }
-        offset += 2;
 
         let n_bits = (header & 0x07ff) + 1; // Lower 11 bits store n_bits - 1
         let src_type = (header >> 13) & 0x01; // Bit 13: 0=field, 1=immediate
         let dst_type = (header >> 11) & 0x03; // Bits 11-12: 0=match, 1=load, 2=output
 
-        match (src_type, dst_type) {
+        // Immediate values are padded to a 16-bit multiple
+        let value_len = (n_bits as usize).div_ceil(16) * 2;
+
+        specs.push(match (src_type, dst_type) {
             (0, 0) => {
-                // MatchField: src_subfield (6) + dst_subfield (6)
-                // Subfield format: 4-byte NXM header + 2-byte offset
-                if offset + 12 > data.len() {
-                    break;
-                }
-                let src_field = u32::from_be_bytes([
-                    data[offset],
-                    data[offset + 1],
-                    data[offset + 2],
-                    data[offset + 3],
-                ]);
-                // Skip 2-byte offset (currently unused in our API)
-                let dst_field = u32::from_be_bytes([
-                    data[offset + 6],
-                    data[offset + 7],
-                    data[offset + 8],
-                    data[offset + 9],
-                ]);
-                // Skip 2-byte offset
-                offset += 12;
-                specs.push(LearnSpec::MatchField {
+                let src_field = cur.read_subfield("learn match spec")?;
+                let dst_field = cur.read_subfield("learn match spec")?;
+                LearnSpec::MatchField {
                     src_field,
                     dst_field,
                     n_bits,
-                });
+                }
             }
             (1, 0) => {
-                // MatchImmediate: value (variable) + dst_subfield (6)
-                let value_len = (n_bits as usize).div_ceil(16) * 2;
-                if offset + value_len + 6 > data.len() {
-                    break;
-                }
-                let value = data[offset..offset + value_len].to_vec();
-                offset += value_len;
-                let dst_field = u32::from_be_bytes([
-                    data[offset],
-                    data[offset + 1],
-                    data[offset + 2],
-                    data[offset + 3],
-                ]);
-                offset += 6; // 4-byte header + 2-byte offset
-                specs.push(LearnSpec::MatchImmediate {
+                let value = cur.take(value_len, "learn match spec value")?.to_vec();
+                let dst_field = cur.read_subfield("learn match spec")?;
+                LearnSpec::MatchImmediate {
                     dst_field,
                     value,
                     n_bits,
-                });
+                }
             }
             (0, 1) => {
-                // LoadField: src_subfield (6) + dst_subfield (6)
-                if offset + 12 > data.len() {
-                    break;
-                }
-                let src_field = u32::from_be_bytes([
-                    data[offset],
-                    data[offset + 1],
-                    data[offset + 2],
-                    data[offset + 3],
-                ]);
-                let dst_field = u32::from_be_bytes([
-                    data[offset + 6],
-                    data[offset + 7],
-                    data[offset + 8],
-                    data[offset + 9],
-                ]);
-                offset += 12;
-                specs.push(LearnSpec::LoadField {
+                let src_field = cur.read_subfield("learn load spec")?;
+                let dst_field = cur.read_subfield("learn load spec")?;
+                LearnSpec::LoadField {
                     src_field,
                     dst_field,
                     n_bits,
-                });
+                }
             }
             (1, 1) => {
-                // LoadImmediate: value (variable) + dst_subfield (6)
-                let value_len = (n_bits as usize).div_ceil(16) * 2;
-                if offset + value_len + 6 > data.len() {
-                    break;
-                }
-                let value = data[offset..offset + value_len].to_vec();
-                offset += value_len;
-                let dst_field = u32::from_be_bytes([
-                    data[offset],
-                    data[offset + 1],
-                    data[offset + 2],
-                    data[offset + 3],
-                ]);
-                offset += 6; // 4-byte header + 2-byte offset
-                specs.push(LearnSpec::LoadImmediate {
+                let value = cur.take(value_len, "learn load spec value")?.to_vec();
+                let dst_field = cur.read_subfield("learn load spec")?;
+                LearnSpec::LoadImmediate {
                     dst_field,
                     value,
                     n_bits,
-                });
+                }
             }
             (0, 2) => {
-                // OutputField: src_subfield (6)
-                if offset + 6 > data.len() {
-                    break;
-                }
-                let src_field = u32::from_be_bytes([
-                    data[offset],
-                    data[offset + 1],
-                    data[offset + 2],
-                    data[offset + 3],
-                ]);
-                offset += 6; // 4-byte header + 2-byte offset
-                specs.push(LearnSpec::OutputField { src_field, n_bits });
+                let src_field = cur.read_subfield("learn output spec")?;
+                LearnSpec::OutputField { src_field, n_bits }
             }
             _ => {
-                // Unknown spec type, skip
-                break;
+                return Err(crate::Error::Parse(format!(
+                    "unknown learn spec type: src={src_type} dst={dst_type}"
+                )));
             }
-        }
+        });
     }
 
-    specs
+    Ok(specs)
 }

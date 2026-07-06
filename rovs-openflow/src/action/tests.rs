@@ -814,3 +814,57 @@ fn action_list_group() {
         _ => panic!("expected Group"),
     }
 }
+
+#[test]
+fn decode_learn_specs_stops_at_zero_header() {
+    // One MatchField spec followed by zero-header padding
+    let mut data = Vec::new();
+    let header: u16 =
+        nicira::learn_spec_header::SRC_FIELD | nicira::learn_spec_header::DST_MATCH | (48 - 1);
+    data.extend(header.to_be_bytes());
+    data.extend(0x0001_0006u32.to_be_bytes()); // src subfield header
+    data.extend(0u16.to_be_bytes()); // src bit offset
+    data.extend(0x0001_0006u32.to_be_bytes()); // dst subfield header
+    data.extend(0u16.to_be_bytes()); // dst bit offset
+    data.extend([0u8; 4]); // trailing pad = zero headers
+
+    let specs = nicira::decode_learn_specs(&data).expect("valid specs");
+    assert_eq!(specs.len(), 1);
+    match &specs[0] {
+        LearnSpec::MatchField {
+            src_field,
+            dst_field,
+            n_bits,
+        } => {
+            assert_eq!(src_field, &0x0001_0006);
+            assert_eq!(dst_field, &0x0001_0006);
+            assert_eq!(n_bits, &48);
+        }
+        _ => panic!("expected MatchField"),
+    }
+}
+
+#[test]
+fn decode_learn_specs_truncated_is_error() {
+    // MatchField header but only half of the src subfield present
+    let mut data = Vec::new();
+    let header: u16 =
+        nicira::learn_spec_header::SRC_FIELD | nicira::learn_spec_header::DST_MATCH | (48 - 1);
+    data.extend(header.to_be_bytes());
+    data.extend([0x00, 0x01]); // truncated
+
+    let err = nicira::decode_learn_specs(&data).expect_err("truncated specs must error");
+    assert!(err.to_string().contains("truncated"), "got: {err}");
+}
+
+#[test]
+fn decode_learn_specs_unknown_type_is_error() {
+    // src=immediate (bit 13), dst=output (2 << 11) is not a valid combination
+    let header: u16 = (1 << 13) | (2 << 11) | (16 - 1);
+    let mut data = Vec::new();
+    data.extend(header.to_be_bytes());
+    data.extend([0u8; 8]);
+
+    let err = nicira::decode_learn_specs(&data).expect_err("unknown spec type must error");
+    assert!(err.to_string().contains("unknown learn spec"), "got: {err}");
+}
