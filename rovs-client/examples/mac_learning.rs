@@ -1,7 +1,7 @@
-//! Example: MAC Learning with NxLearn
+//! Example: MAC Learning with `NxLearn`
 //!
 //! This example demonstrates how to implement a basic MAC learning switch
-//! using the NxLearn action. When a packet arrives:
+//! using the `NxLearn` action. When a packet arrives:
 //!
 //! 1. Table 0: Learn the source MAC -> input port mapping, then go to table 1
 //! 2. Table 1: If destination MAC is known, output to learned port; else flood
@@ -11,7 +11,7 @@
 //!   ./scripts/test-with-ovs.sh start full
 //!
 //!   # Then run the example:
-//!   OPENFLOW_ADDR=tcp:127.0.0.1:6653 cargo run --example mac_learning
+//!   `OPENFLOW_ADDR=tcp:127.0.0.1:6653` cargo run --example `mac_learning`
 
 use rovs_openflow::{ActionList, Flow, NxLearn, VConn, nxm};
 use rovs_transport::Address;
@@ -26,7 +26,7 @@ fn get_openflow_addr() -> Address {
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let addr = get_openflow_addr();
-    println!("Connecting to OpenFlow at {}...", addr);
+    println!("Connecting to OpenFlow at {addr}...");
 
     let mut conn = VConn::connect(&addr).await?;
     println!("Connected! OpenFlow version: {:?}", conn.version());

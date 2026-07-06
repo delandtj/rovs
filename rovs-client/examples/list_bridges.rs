@@ -1,6 +1,6 @@
 //! Example: List all OVS bridges
 //!
-//! Run with: cargo run --example list_bridges
+//! Run with: cargo run --example `list_bridges`
 
 use rovs_client::OvsClient;
 

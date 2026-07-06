@@ -1,6 +1,6 @@
 //! Example: Add a simple flow to a bridge
 //!
-//! Run with: cargo run --example add_flow
+//! Run with: cargo run --example `add_flow`
 
 use std::net::Ipv4Addr;
 

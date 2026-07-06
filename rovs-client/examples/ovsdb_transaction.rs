@@ -1,7 +1,7 @@
 //! OVSDB transaction example - creating bridges and ports.
 //!
 //! Usage:
-//!   cargo run --example ovsdb_transaction
+//!   cargo run --example `ovsdb_transaction`
 
 use rovs_ovsdb::{Client, Transaction};
 use tracing_subscriber::{EnvFilter, fmt};
@@ -17,7 +17,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let addr =
         std::env::var("OVSDB_ADDR").unwrap_or_else(|_| "unix:/tmp/ovs-test/db.sock".to_owned());
 
-    println!("Connecting to OVSDB at: {}", addr);
+    println!("Connecting to OVSDB at: {addr}");
 
     let mut client = Client::connect(&addr).await?;
     println!("Connected!");
@@ -32,16 +32,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("\n=== Creating bridge 'test-br0' ===");
     let mut txn = Transaction::new("Open_vSwitch");
     let (bridge_ref, _port_ref, _iface_ref) = txn.create_bridge("test-br0");
-    println!("Bridge row ref: {:?}", bridge_ref);
+    println!("Bridge row ref: {bridge_ref:?}");
 
     // Add an internal port
     // Not "test-port1": that name is taken by the container entrypoint's br-test setup
     let (port_ref, _iface_ref) = txn.add_internal_port("test-br0", "demo-port1");
-    println!("Port row ref: {:?}", port_ref);
+    println!("Port row ref: {port_ref:?}");
 
     // Add a VLAN port
     let (vlan_port_ref, _) = txn.add_vlan_port("test-br0", "test-vlan100", 100);
-    println!("VLAN port row ref: {:?}", vlan_port_ref);
+    println!("VLAN port row ref: {vlan_port_ref:?}");
 
     // Commit the transaction
     println!("\nCommitting transaction...");
@@ -50,7 +50,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             println!("Transaction succeeded!");
             println!("UUID map:");
             for (name, uuid) in txn.uuid_map() {
-                println!("  {} -> {}", name, uuid);
+                println!("  {name} -> {uuid}");
             }
         }
         Ok(false) => {
@@ -58,7 +58,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             return Err("Transaction failed".into());
         }
         Err(e) => {
-            println!("Transaction error: {}", e);
+            println!("Transaction error: {e}");
             return Err(e.into());
         }
     }
@@ -70,14 +70,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("\n=== Bridges after transaction ===");
     for row in client.idl().rows("Bridge") {
         let name = row.get_string("name").unwrap_or("<unnamed>");
-        println!("  Bridge: {}", name);
+        println!("  Bridge: {name}");
     }
 
     println!("\n=== Ports after transaction ===");
     for row in client.idl().rows("Port") {
         let name = row.get_string("name").unwrap_or("<unnamed>");
         let tag = row.get("tag");
-        println!("  Port: {} (tag: {:?})", name, tag);
+        println!("  Port: {name} (tag: {tag:?})");
     }
 
     // Create a second bridge and patch ports
@@ -85,13 +85,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut txn2 = Transaction::new("Open_vSwitch");
     txn2.create_bridge("test-br1");
     let (patch1_ref, _, patch2_ref, _) = txn2.add_patch_ports("test-br0", "test-br1", None, None);
-    println!("Patch port refs: {:?}, {:?}", patch1_ref, patch2_ref);
+    println!("Patch port refs: {patch1_ref:?}, {patch2_ref:?}");
 
     println!("\nCommitting patch port transaction...");
     match client.commit(&mut txn2).await {
         Ok(true) => println!("Patch ports created successfully!"),
         Ok(false) => println!("Failed to create patch ports"),
-        Err(e) => println!("Error: {}", e),
+        Err(e) => println!("Error: {e}"),
     }
 
     // Wait for update
@@ -103,10 +103,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let iface_type = row.get_string("type").unwrap_or("");
         let options = row.get("options");
         if iface_type == "patch" {
-            println!(
-                "  Interface: {} (type: {}, options: {:?})",
-                name, iface_type, options
-            );
+            println!("  Interface: {name} (type: {iface_type}, options: {options:?})");
         }
     }
 

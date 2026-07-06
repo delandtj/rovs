@@ -1,6 +1,6 @@
 //! Example: Connect to OVSDB and monitor for changes
 //!
-//! Run with: cargo run --example ovsdb_monitor
+//! Run with: cargo run --example `ovsdb_monitor`
 //!
 //! Requires OVS to be running. The default socket path is:
 //! /var/run/openvswitch/db.sock

@@ -11,7 +11,7 @@
 //!   - Traffic from port 2 to port 1: Rewrite dst MAC to internal MAC
 //!   - ARP requests for external IP: Proxy responds with external MAC
 //!
-//! The ARP proxy uses Nicira extensions (NxMove, NxRegLoad) to:
+//! The ARP proxy uses Nicira extensions (`NxMove`, `NxRegLoad`) to:
 //! 1. Match ARP requests for the external IP
 //! 2. Swap sender/target addresses to form a reply
 //! 3. Set the sender MAC to the proxy's external MAC
@@ -22,7 +22,7 @@
 //!   ./scripts/test-with-ovs.sh start full
 //!
 //!   # Then run the example:
-//!   OPENFLOW_ADDR=tcp:127.0.0.1:6653 cargo run --example mac_translation
+//!   `OPENFLOW_ADDR=tcp:127.0.0.1:6653` cargo run --example `mac_translation`
 
 use rovs_openflow::{ActionList, Flow, Match, VConn, nxm};
 use rovs_transport::Address;
@@ -34,25 +34,25 @@ fn get_openflow_addr() -> Address {
         .expect("Invalid OPENFLOW_ADDR")
 }
 
-/// Convert MAC address bytes to u64 for use with load_field
-fn mac_to_u64(mac: &[u8; 6]) -> u64 {
-    ((mac[0] as u64) << 40)
-        | ((mac[1] as u64) << 32)
-        | ((mac[2] as u64) << 24)
-        | ((mac[3] as u64) << 16)
-        | ((mac[4] as u64) << 8)
-        | (mac[5] as u64)
+/// Convert MAC address bytes to u64 for use with `load_field`
+fn mac_to_u64(mac: [u8; 6]) -> u64 {
+    (u64::from(mac[0]) << 40)
+        | (u64::from(mac[1]) << 32)
+        | (u64::from(mac[2]) << 24)
+        | (u64::from(mac[3]) << 16)
+        | (u64::from(mac[4]) << 8)
+        | u64::from(mac[5])
 }
 
 /// Convert IPv4 address bytes to u32
-fn ipv4_to_u32(ip: &[u8; 4]) -> u32 {
-    ((ip[0] as u32) << 24) | ((ip[1] as u32) << 16) | ((ip[2] as u32) << 8) | (ip[3] as u32)
+fn ipv4_to_u32(ip: [u8; 4]) -> u32 {
+    (u32::from(ip[0]) << 24) | (u32::from(ip[1]) << 16) | (u32::from(ip[2]) << 8) | u32::from(ip[3])
 }
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let addr = get_openflow_addr();
-    println!("Connecting to OpenFlow at {}...", addr);
+    println!("Connecting to OpenFlow at {addr}...");
 
     let mut conn = VConn::connect(&addr).await?;
     println!("Connected! OpenFlow version: {:?}", conn.version());
@@ -104,9 +104,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 // Move sender IP to target IP (ARP SPA -> ARP TPA)
                 .move_field(nxm::ARP_SPA, nxm::ARP_TPA, 32, 0, 0)
                 // Set sender MAC to our external MAC
-                .set_arp_sha(mac_to_u64(&external_mac))
+                .set_arp_sha(mac_to_u64(external_mac))
                 // Set sender IP to our external IP
-                .set_arp_spa(ipv4_to_u32(&external_ip))
+                .set_arp_spa(ipv4_to_u32(external_ip))
                 // Set ARP opcode to 2 (reply)
                 .set_arp_op(2)
                 // Move original Ethernet src to dst (for the reply)
@@ -120,8 +120,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     conn.send_flow_sync(&arp_proxy).await?;
     println!(
         "  Added: ARP proxy for {} -> responds with {}",
-        format_ipv4(&external_ip),
-        format_mac(&external_mac)
+        format_ipv4(external_ip),
+        format_mac(external_mac)
     );
 
     // ==========================================================================
@@ -145,8 +145,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!(
         "  Added: in_port={}, eth_src={} -> set_eth_src={}, output:{}",
         internal_port,
-        format_mac(&internal_mac),
-        format_mac(&external_mac),
+        format_mac(internal_mac),
+        format_mac(external_mac),
         external_port
     );
 
@@ -171,8 +171,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!(
         "  Added: in_port={}, eth_dst={} -> set_eth_dst={}, output:{}",
         external_port,
-        format_mac(&external_mac),
-        format_mac(&internal_mac),
+        format_mac(external_mac),
+        format_mac(internal_mac),
         internal_port
     );
 
@@ -193,14 +193,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("\n--- MAC Translation with ARP Proxy Configured ---");
     println!(
         "Internal host ({}) on port {} appears as {} externally",
-        format_mac(&internal_mac),
+        format_mac(internal_mac),
         internal_port,
-        format_mac(&external_mac)
+        format_mac(external_mac)
     );
     println!(
         "ARP proxy responds for {} with MAC {}",
-        format_ipv4(&external_ip),
-        format_mac(&external_mac)
+        format_ipv4(external_ip),
+        format_mac(external_mac)
     );
     println!("\nTo verify the flows:");
     println!("  podman exec rovs-ovsdb-test ovs-ofctl dump-flows br-test -O OpenFlow13");
@@ -208,13 +208,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-fn format_mac(mac: &[u8; 6]) -> String {
+fn format_mac(mac: [u8; 6]) -> String {
     format!(
         "{:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}",
         mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]
     )
 }
 
-fn format_ipv4(ip: &[u8; 4]) -> String {
+fn format_ipv4(ip: [u8; 4]) -> String {
     format!("{}.{}.{}.{}", ip[0], ip[1], ip[2], ip[3])
 }

@@ -1,7 +1,7 @@
 //! Flow monitor example — live flow change notifications.
 //!
-//! Demonstrates the Nicira Flow Monitor (NXST_FLOW_MONITOR) extension.
-//! Opens two OpenFlow connections: one monitors flow changes, the other
+//! Demonstrates the Nicira Flow Monitor (`NXST_FLOW_MONITOR`) extension.
+//! Opens two `OpenFlow` connections: one monitors flow changes, the other
 //! adds/modifies/deletes flows. The monitor connection prints events as
 //! they arrive.
 //!

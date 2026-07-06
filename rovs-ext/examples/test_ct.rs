@@ -38,7 +38,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     match conn.send_flow_sync(&flow_no_ethtype).await {
         Ok(()) => println!("  OK (unexpected!)"),
         Err(e) => {
-            println!("  Expected error: BadAction code 10 (MATCH_INCONSISTENT)\n  Got: {e:?}")
+            println!("  Expected error: BadAction code 10 (MATCH_INCONSISTENT)\n  Got: {e:?}");
         }
     }
 

@@ -20,8 +20,8 @@
 //!   - NDP proxy: Respond to neighbor solicitations for external IPv6
 //!
 //! Usage:
-//!   # Ensure OVSDB and OpenFlow are accessible
-//!   OVSDB_ADDR=tcp:127.0.0.1:6640 cargo run --example vlan_mac_nat
+//!   # Ensure OVSDB and `OpenFlow` are accessible
+//!   `OVSDB_ADDR=tcp:127.0.0.1:6640` cargo run --example `vlan_mac_nat`
 //!
 //!   # Cleanup after testing:
 //!   ovs-vsctl --db=tcp:127.0.0.1:6640 del-br br-nat
@@ -59,34 +59,34 @@ fn get_ovsdb_addr() -> String {
 
 fn get_openflow_addr() -> Address {
     std::env::var("OPENFLOW_ADDR")
-        .unwrap_or_else(|_| format!("tcp:127.0.0.1:{}", OPENFLOW_PORT))
+        .unwrap_or_else(|_| format!("tcp:127.0.0.1:{OPENFLOW_PORT}"))
         .parse()
         .expect("Invalid OPENFLOW_ADDR")
 }
 
-/// Convert MAC address bytes to u64 for use with load_field
-fn mac_to_u64(mac: &[u8; 6]) -> u64 {
-    ((mac[0] as u64) << 40)
-        | ((mac[1] as u64) << 32)
-        | ((mac[2] as u64) << 24)
-        | ((mac[3] as u64) << 16)
-        | ((mac[4] as u64) << 8)
-        | (mac[5] as u64)
+/// Convert MAC address bytes to u64 for use with `load_field`
+fn mac_to_u64(mac: [u8; 6]) -> u64 {
+    (u64::from(mac[0]) << 40)
+        | (u64::from(mac[1]) << 32)
+        | (u64::from(mac[2]) << 24)
+        | (u64::from(mac[3]) << 16)
+        | (u64::from(mac[4]) << 8)
+        | u64::from(mac[5])
 }
 
 /// Convert IPv4 address bytes to u32
-fn ipv4_to_u32(ip: &[u8; 4]) -> u32 {
-    ((ip[0] as u32) << 24) | ((ip[1] as u32) << 16) | ((ip[2] as u32) << 8) | (ip[3] as u32)
+fn ipv4_to_u32(ip: [u8; 4]) -> u32 {
+    (u32::from(ip[0]) << 24) | (u32::from(ip[1]) << 16) | (u32::from(ip[2]) << 8) | u32::from(ip[3])
 }
 
-fn format_mac(mac: &[u8; 6]) -> String {
+fn format_mac(mac: [u8; 6]) -> String {
     format!(
         "{:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}",
         mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]
     )
 }
 
-fn format_ipv4(ip: &[u8; 4]) -> String {
+fn format_ipv4(ip: [u8; 4]) -> String {
     format!("{}.{}.{}.{}", ip[0], ip[1], ip[2], ip[3])
 }
 
@@ -96,6 +96,7 @@ fn format_ipv6(ip: &[u8; 16]) -> String {
 }
 
 #[tokio::main]
+#[allow(clippy::too_many_lines)]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // =========================================================================
     // Part 1: Create bridge and ports via OVSDB
@@ -103,7 +104,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("=== Creating bridge topology via OVSDB ===\n");
 
     let ovsdb_addr = get_ovsdb_addr();
-    println!("Connecting to OVSDB at {}...", ovsdb_addr);
+    println!("Connecting to OVSDB at {ovsdb_addr}...");
 
     let mut client = Client::connect(&ovsdb_addr).await?;
     println!("Connected to OVSDB\n");
@@ -115,26 +116,26 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .any(|r| r.get_string("name") == Some(BRIDGE_NAME));
 
     if bridge_exists {
-        println!("Bridge '{}' already exists, skipping creation", BRIDGE_NAME);
+        println!("Bridge '{BRIDGE_NAME}' already exists, skipping creation");
     } else {
         // Create bridge with all ports in one transaction
         let mut txn = Transaction::new("Open_vSwitch");
 
         // Create bridge (this also creates the default internal port with same name)
         txn.create_bridge(BRIDGE_NAME);
-        println!("Creating bridge '{}'...", BRIDGE_NAME);
+        println!("Creating bridge '{BRIDGE_NAME}'...");
 
         // Add physical NIC as system port
         txn.add_system_port(BRIDGE_NAME, PHYSICAL_PORT);
-        println!("Adding system port '{}' (physical NIC)...", PHYSICAL_PORT);
+        println!("Adding system port '{PHYSICAL_PORT}' (physical NIC)...");
 
         // Add internal port
         txn.add_internal_port(BRIDGE_NAME, INTERNAL_PORT);
-        println!("Adding internal port '{}'...", INTERNAL_PORT);
+        println!("Adding internal port '{INTERNAL_PORT}'...");
 
         // Add VLAN access port
         txn.add_vlan_port(BRIDGE_NAME, VLAN_PORT, VLAN_TAG);
-        println!("Adding VLAN port '{}' with tag {}...", VLAN_PORT, VLAN_TAG);
+        println!("Adding VLAN port '{VLAN_PORT}' with tag {VLAN_TAG}...");
 
         // Commit transaction
         match client.commit(&mut txn).await {
@@ -144,7 +145,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 return Err("OVSDB transaction failed".into());
             }
             Err(e) => {
-                eprintln!("Transaction error: {}", e);
+                eprintln!("Transaction error: {e}");
                 return Err(e.into());
             }
         }
@@ -154,14 +155,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     // Show created ports
-    println!("\n=== Current ports on {} ===", BRIDGE_NAME);
+    println!("\n=== Current ports on {BRIDGE_NAME} ===");
     for row in client.idl().rows("Port") {
         let name = row.get_string("name").unwrap_or("<unnamed>");
         let tag = row.get_i64("tag");
         if let Some(t) = tag {
-            println!("  {} (tag: {})", name, t);
+            println!("  {name} (tag: {t})");
         } else {
-            println!("  {}", name);
+            println!("  {name}");
         }
     }
 
@@ -171,8 +172,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("\n=== Configuring OpenFlow controller ===\n");
 
     // Set the bridge to listen for OpenFlow connections via OVSDB
-    let controller_target = format!("ptcp:{}:127.0.0.1", OPENFLOW_PORT);
-    println!("Setting controller to {}...", controller_target);
+    let controller_target = format!("ptcp:{OPENFLOW_PORT}:127.0.0.1");
+    println!("Setting controller to {controller_target}...");
 
     let mut ctrl_txn = Transaction::new("Open_vSwitch");
     ctrl_txn.set_controller(BRIDGE_NAME, &controller_target);
@@ -183,7 +184,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             eprintln!("Warning: Failed to set controller (may already exist)");
         }
         Err(e) => {
-            eprintln!("Warning: Controller configuration error: {}", e);
+            eprintln!("Warning: Controller configuration error: {e}");
         }
     }
     client.wait().await?;
@@ -198,7 +199,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // =========================================================================
     println!("=== Installing OpenFlow rules ===\n");
 
-    println!("Connecting to OpenFlow at {}...", of_addr);
+    println!("Connecting to OpenFlow at {of_addr}...");
     let mut conn = VConn::connect(&of_addr).await?;
     println!("Connected! OpenFlow version: {:?}\n", conn.version());
 
@@ -227,8 +228,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .move_field(nxm::ARP_SHA, nxm::ARP_THA, 48, 0, 0)
                 .move_field(nxm::ARP_SPA, nxm::ARP_TPA, 32, 0, 0)
                 // Set our MAC and IP as sender
-                .set_arp_sha(mac_to_u64(&EXTERNAL_MAC))
-                .set_arp_spa(ipv4_to_u32(&EXTERNAL_IPV4))
+                .set_arp_sha(mac_to_u64(EXTERNAL_MAC))
+                .set_arp_spa(ipv4_to_u32(EXTERNAL_IPV4))
                 // Set opcode to reply
                 .set_arp_op(2)
                 // Swap Ethernet addresses
@@ -241,8 +242,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     conn.send_flow_sync(&arp_proxy).await?;
     println!(
         "Added: ARP proxy for {} -> {}",
-        format_ipv4(&EXTERNAL_IPV4),
-        format_mac(&EXTERNAL_MAC)
+        format_ipv4(EXTERNAL_IPV4),
+        format_mac(EXTERNAL_MAC)
     );
 
     // -------------------------------------------------------------------------
@@ -292,7 +293,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             Match::new()
                 .in_port(PORT_VLAN100)
                 .eth_type(0x0800) // IPv4
-                .eth_src(INTERNAL_MAC.into()),
+                .eth_src(INTERNAL_MAC),
         )
         .actions(
             ActionList::new()
@@ -304,8 +305,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!(
         "Added: IPv4 in_port={} eth_src={} -> set_eth_src={} output:{}",
         PORT_VLAN100,
-        format_mac(&INTERNAL_MAC),
-        format_mac(&EXTERNAL_MAC),
+        format_mac(INTERNAL_MAC),
+        format_mac(EXTERNAL_MAC),
         PORT_ENO1
     );
 
@@ -319,7 +320,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             Match::new()
                 .in_port(PORT_VLAN100)
                 .eth_type(0x86dd) // IPv6
-                .eth_src(INTERNAL_MAC.into()),
+                .eth_src(INTERNAL_MAC),
         )
         .actions(
             ActionList::new()
@@ -331,8 +332,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!(
         "Added: IPv6 in_port={} eth_src={} -> set_eth_src={} output:{}",
         PORT_VLAN100,
-        format_mac(&INTERNAL_MAC),
-        format_mac(&EXTERNAL_MAC),
+        format_mac(INTERNAL_MAC),
+        format_mac(EXTERNAL_MAC),
         PORT_ENO1
     );
 
@@ -346,20 +347,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             Match::new()
                 .in_port(PORT_VLAN100)
                 .eth_type(0x0806) // ARP
-                .eth_src(INTERNAL_MAC.into()),
+                .eth_src(INTERNAL_MAC),
         )
         .actions(
             ActionList::new()
                 .set_eth_src(EXTERNAL_MAC)
-                .set_arp_sha(mac_to_u64(&EXTERNAL_MAC))
+                .set_arp_sha(mac_to_u64(EXTERNAL_MAC))
                 .output(PORT_ENO1),
         );
 
     conn.send_flow_sync(&arp_out).await?;
-    println!(
-        "Added: ARP in_port={} -> rewrite SHA and eth_src, output:{}",
-        PORT_VLAN100, PORT_ENO1
-    );
+    println!("Added: ARP in_port={PORT_VLAN100} -> rewrite SHA and eth_src, output:{PORT_ENO1}");
 
     // -------------------------------------------------------------------------
     // Rule 6: IPv4 eno1 -> vlan100 (rewrite destination MAC)
@@ -373,7 +371,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             Match::new()
                 .in_port(PORT_ENO1)
                 .eth_type(0x0800) // IPv4
-                .eth_dst(EXTERNAL_MAC.into()),
+                .eth_dst(EXTERNAL_MAC),
         )
         .actions(
             ActionList::new()
@@ -385,8 +383,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!(
         "Added: IPv4 in_port={} eth_dst={} -> set_eth_dst={} output:{}",
         PORT_ENO1,
-        format_mac(&EXTERNAL_MAC),
-        format_mac(&INTERNAL_MAC),
+        format_mac(EXTERNAL_MAC),
+        format_mac(INTERNAL_MAC),
         PORT_VLAN100
     );
 
@@ -400,7 +398,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             Match::new()
                 .in_port(PORT_ENO1)
                 .eth_type(0x86dd) // IPv6
-                .eth_dst(EXTERNAL_MAC.into()),
+                .eth_dst(EXTERNAL_MAC),
         )
         .actions(
             ActionList::new()
@@ -412,8 +410,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!(
         "Added: IPv6 in_port={} eth_dst={} -> set_eth_dst={} output:{}",
         PORT_ENO1,
-        format_mac(&EXTERNAL_MAC),
-        format_mac(&INTERNAL_MAC),
+        format_mac(EXTERNAL_MAC),
+        format_mac(INTERNAL_MAC),
         PORT_VLAN100
     );
 
@@ -427,20 +425,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             Match::new()
                 .in_port(PORT_ENO1)
                 .eth_type(0x0806) // ARP
-                .eth_dst(EXTERNAL_MAC.into()),
+                .eth_dst(EXTERNAL_MAC),
         )
         .actions(
             ActionList::new()
                 .set_eth_dst(INTERNAL_MAC)
-                .set_arp_tha(mac_to_u64(&INTERNAL_MAC))
+                .set_arp_tha(mac_to_u64(INTERNAL_MAC))
                 .output(PORT_VLAN100),
         );
 
     conn.send_flow_sync(&arp_in).await?;
-    println!(
-        "Added: ARP in_port={} -> rewrite THA and eth_dst, output:{}",
-        PORT_ENO1, PORT_VLAN100
-    );
+    println!("Added: ARP in_port={PORT_ENO1} -> rewrite THA and eth_dst, output:{PORT_VLAN100}");
 
     // -------------------------------------------------------------------------
     // Rule 9: Default - drop unmatched
@@ -455,18 +450,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Summary
     // =========================================================================
     println!("\n=== Configuration Complete ===\n");
-    println!("Bridge: {}", BRIDGE_NAME);
+    println!("Bridge: {BRIDGE_NAME}");
     println!("Ports:");
-    println!("  - {} (physical uplink)", PHYSICAL_PORT);
-    println!("  - {} (internal)", INTERNAL_PORT);
-    println!("  - {} (VLAN {})", VLAN_PORT, VLAN_TAG);
+    println!("  - {PHYSICAL_PORT} (physical uplink)");
+    println!("  - {INTERNAL_PORT} (internal)");
+    println!("  - {VLAN_PORT} (VLAN {VLAN_TAG})");
     println!("\nMAC NAT:");
-    println!("  Internal: {}", format_mac(&INTERNAL_MAC));
-    println!("  External: {}", format_mac(&EXTERNAL_MAC));
+    println!("  Internal: {}", format_mac(INTERNAL_MAC));
+    println!("  External: {}", format_mac(EXTERNAL_MAC));
     println!(
         "\nARP Proxy: {} -> {}",
-        format_ipv4(&EXTERNAL_IPV4),
-        format_mac(&EXTERNAL_MAC)
+        format_ipv4(EXTERNAL_IPV4),
+        format_mac(EXTERNAL_MAC)
     );
     println!(
         "NDP Proxy: {} (via controller)",
@@ -474,9 +469,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
     println!("\nTo verify:");
     println!("  ovs-vsctl show");
-    println!("  ovs-ofctl dump-flows {} -O OpenFlow13", BRIDGE_NAME);
+    println!("  ovs-ofctl dump-flows {BRIDGE_NAME} -O OpenFlow13");
     println!("\nTo cleanup:");
-    println!("  ovs-vsctl del-br {}", BRIDGE_NAME);
+    println!("  ovs-vsctl del-br {BRIDGE_NAME}");
 
     Ok(())
 }

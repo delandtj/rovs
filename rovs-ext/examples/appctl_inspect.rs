@@ -1,4 +1,4 @@
-//! Example: Inspect OVS datapath and conntrack state via AppCtl
+//! Example: Inspect OVS datapath and conntrack state via `AppCtl`
 //!
 //! Demonstrates using the unixctl client to inspect switch internals:
 //! - `dpif/show`: Datapath overview with ports
@@ -62,15 +62,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = Args::parse();
 
     // Connect to vswitchd
-    let mut ctl = match &args.socket {
-        Some(path) => {
-            println!("Connecting to {path}...");
-            AppCtl::connect(path).await?
-        }
-        None => {
-            println!("Auto-discovering vswitchd socket...");
-            AppCtl::connect_default().await?
-        }
+    let mut ctl = if let Some(path) = &args.socket {
+        println!("Connecting to {path}...");
+        AppCtl::connect(path).await?
+    } else {
+        println!("Auto-discovering vswitchd socket...");
+        AppCtl::connect_default().await?
     };
 
     println!("Connected to ovs-vswitchd\n");
@@ -98,8 +95,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     if flows.is_empty() {
         println!("  (no datapath flows)");
     } else {
-        println!("  {:<6} {}", "INDEX", "FLOW");
-        println!("  {:<6} {}", "-----", "----");
+        println!("  {:<6} FLOW", "INDEX");
+        println!("  {:<6} ----", "-----");
         for (i, flow) in flows.iter().enumerate() {
             println!("  {:<6} {flow}", i + 1);
         }

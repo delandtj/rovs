@@ -1,21 +1,21 @@
 //! Example: NDP Proxy Controller
 //!
-//! This example implements a simple OpenFlow controller that responds to
-//! ICMPv6 Neighbor Solicitation messages with Neighbor Advertisement replies,
+//! This example implements a simple `OpenFlow` controller that responds to
+//! `ICMPv6` Neighbor Solicitation messages with Neighbor Advertisement replies,
 //! providing NDP proxy functionality.
 //!
 //! The controller:
-//! 1. Connects to an OpenFlow switch
+//! 1. Connects to an `OpenFlow` switch
 //! 2. Installs a flow to send NDP NS packets to the controller
 //! 3. Waits for Packet-In messages
 //! 4. For each NS targeting our IPv6 address, constructs and sends back an NA
 //!
 //! Usage:
-//!   # Start OVS with OpenFlow enabled on a bridge
-//!   OPENFLOW_ADDR=tcp:127.0.0.1:6654 cargo run --example ndp_controller
+//!   # Start OVS with `OpenFlow` enabled on a bridge
+//!   `OPENFLOW_ADDR=tcp:127.0.0.1:6654` cargo run --example `ndp_controller`
 //!
 //! In another terminal, test with:
-//!   ping6 -I br-nat fd00::100
+//!   ping6 -I br-nat `fd00::100`
 
 use std::net::Ipv6Addr;
 
@@ -40,10 +40,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let addr = get_openflow_addr();
     println!("NDP Proxy Controller");
     println!("====================");
-    println!("Proxying for IPv6: {}", EXTERNAL_IPV6);
-    println!("         with MAC: {}", format_mac(&EXTERNAL_MAC));
+    println!("Proxying for IPv6: {EXTERNAL_IPV6}");
+    println!("         with MAC: {}", format_mac(EXTERNAL_MAC));
     println!();
-    println!("Connecting to OpenFlow at {}...", addr);
+    println!("Connecting to OpenFlow at {addr}...");
 
     let mut conn = VConn::connect(&addr).await?;
     println!("Connected! OpenFlow version: {:?}", conn.version());
@@ -65,20 +65,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Flow installed: ICMPv6 NS (type 135) -> CONTROLLER");
 
     println!("\nWaiting for Neighbor Solicitation packets...");
-    println!("(Test with: ping6 -c 1 {})\n", EXTERNAL_IPV6);
+    println!("(Test with: ping6 -c 1 {EXTERNAL_IPV6})\n");
 
     // Main controller loop
-    let mut ns_count = 0u64;
-    let mut na_count = 0u64;
+    let mut solicit_count = 0u64;
+    let mut advert_count = 0u64;
 
     loop {
         // Wait for Packet-In
         let packet_in = conn.recv_packet_in().await?;
 
-        ns_count += 1;
+        solicit_count += 1;
         println!(
             "[{}] Received Packet-In: {} bytes from table {}, reason {:?}",
-            ns_count,
+            solicit_count,
             packet_in.data.len(),
             packet_in.table_id,
             packet_in.reason
@@ -124,16 +124,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .data(na_packet);
 
         conn.send_packet_out(&packet_out).await?;
-        na_count += 1;
+        advert_count += 1;
 
-        println!(
-            "    NA sent! (total: {} NS received, {} NA sent)",
-            ns_count, na_count
-        );
+        println!("    NA sent! (total: {solicit_count} NS received, {advert_count} NA sent)");
     }
 }
 
-fn format_mac(mac: &[u8; 6]) -> String {
+fn format_mac(mac: [u8; 6]) -> String {
     format!(
         "{:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}",
         mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]
