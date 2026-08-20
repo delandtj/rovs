@@ -8,14 +8,16 @@ use tokio::net::{TcpStream, UnixStream};
 
 use crate::{Address, Error, Result};
 
-/// A transport stream that can be Unix, TCP, or TLS.
+/// A transport stream that can be Unix or TCP.
+///
+/// `ssl:` addresses parse (see [`Address::Tls`]) but do not connect: OVSDB
+/// over TLS was never implemented here, so [`Stream::connect`] rejects them.
+/// No TLS stack is linked -- adding one back means adding a variant here.
 pub enum Stream {
     /// Unix domain socket
     Unix(UnixStream),
     /// TCP socket
     Tcp(TcpStream),
-    /// TLS over TCP
-    Tls(Box<tokio_rustls::client::TlsStream<TcpStream>>),
 }
 
 impl Stream {
@@ -34,10 +36,7 @@ impl Stream {
                 let stream = TcpStream::connect(format!("{host}:{port}")).await?;
                 Ok(Self::Tcp(stream))
             }
-            Address::Tls { host: _, port: _ } => {
-                // TODO: Implement TLS connection
-                Err(Error::Tls("TLS not yet implemented".into()))
-            }
+            Address::Tls { host: _, port: _ } => Err(Error::Tls("TLS not implemented".into())),
         }
     }
 }
@@ -51,7 +50,6 @@ impl AsyncRead for Stream {
         match self.get_mut() {
             Self::Unix(s) => Pin::new(s).poll_read(cx, buf),
             Self::Tcp(s) => Pin::new(s).poll_read(cx, buf),
-            Self::Tls(s) => Pin::new(s.as_mut()).poll_read(cx, buf),
         }
     }
 }
@@ -65,7 +63,6 @@ impl AsyncWrite for Stream {
         match self.get_mut() {
             Self::Unix(s) => Pin::new(s).poll_write(cx, buf),
             Self::Tcp(s) => Pin::new(s).poll_write(cx, buf),
-            Self::Tls(s) => Pin::new(s.as_mut()).poll_write(cx, buf),
         }
     }
 
@@ -73,7 +70,6 @@ impl AsyncWrite for Stream {
         match self.get_mut() {
             Self::Unix(s) => Pin::new(s).poll_flush(cx),
             Self::Tcp(s) => Pin::new(s).poll_flush(cx),
-            Self::Tls(s) => Pin::new(s.as_mut()).poll_flush(cx),
         }
     }
 
@@ -81,7 +77,6 @@ impl AsyncWrite for Stream {
         match self.get_mut() {
             Self::Unix(s) => Pin::new(s).poll_shutdown(cx),
             Self::Tcp(s) => Pin::new(s).poll_shutdown(cx),
-            Self::Tls(s) => Pin::new(s.as_mut()).poll_shutdown(cx),
         }
     }
 }

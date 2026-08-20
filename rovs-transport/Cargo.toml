@@ -12,7 +12,6 @@ readme.workspace = true
 
 [dependencies]
 tokio = { workspace = true }
-tokio-rustls = { workspace = true }
 rustls-pemfile = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
