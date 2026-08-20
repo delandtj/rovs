@@ -17,3 +17,6 @@ Thumbs.db
 # Test OVSDB
 /ovs/
 /tmp/ovs-test/
+
+# fastembed model cache (a 144 MB ONNX model was committed from here once)
+.fastembed_cache/
