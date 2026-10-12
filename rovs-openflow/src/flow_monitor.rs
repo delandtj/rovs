@@ -17,7 +17,7 @@
 //! ```no_run
 //! # use rovs_openflow::*;
 //! # async fn example() -> Result<()> {
-//! # let addr = rovs_transport::Address::Tcp("127.0.0.1:6653".parse().unwrap());
+//! # let addr = rovs_transport::Address::Tcp { host: "127.0.0.1".into(), port: 6653 };
 //! let mut mon = VConn::connect(&addr).await?;
 //!
 //! // Register monitor for all flow changes
