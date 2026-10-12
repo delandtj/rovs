@@ -12,7 +12,7 @@ use crate::{Error, Result};
 /// use rovs_ext::util::mac_to_u64;
 ///
 /// let mac = [0x02, 0x00, 0x00, 0x00, 0x00, 0x01];
-/// assert_eq!(mac_to_u64(&mac), 0x0002_0000_0000_0001);
+/// assert_eq!(mac_to_u64(&mac), 0x0200_0000_0001);
 /// ```
 #[must_use]
 pub fn mac_to_u64(mac: &[u8; 6]) -> u64 {
@@ -33,7 +33,7 @@ pub fn mac_to_u64(mac: &[u8; 6]) -> u64 {
 /// ```
 /// use rovs_ext::util::u64_to_mac;
 ///
-/// let mac = u64_to_mac(0x0002_0000_0000_0001);
+/// let mac = u64_to_mac(0x0200_0000_0001);
 /// assert_eq!(mac, [0x02, 0x00, 0x00, 0x00, 0x00, 0x01]);
 /// ```
 #[must_use]
