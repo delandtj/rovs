@@ -151,7 +151,7 @@ fn encode_set_field_u32_ipv4_dst() {
 #[test]
 fn encode_set_field_u16_vlan_vid() {
     // VLAN VID has CFI bit set (0x1000)
-    let vid = 100 | 0x1000;
+    let vid = 0x64 | 0x1000;
     let bytes = encode_set_field_u16(OxmField::VlanVid, vid);
     assert_eq!(bytes.len(), 16);
     // OXM header: class=0x8000, field=6 (VlanVid), has_mask=0, length=2

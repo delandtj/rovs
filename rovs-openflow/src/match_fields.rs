@@ -964,13 +964,10 @@ impl Match {
                         Some(u32::from_be_bytes([value[0], value[1], value[2], value[3]]));
                 }
             }
-            f if f == OxmField::TunnelId as u8 => {
-                if value_len >= 8 {
-                    m.tunnel_id = Some(u64::from_be_bytes([
-                        value[0], value[1], value[2], value[3], value[4], value[5], value[6],
-                        value[7],
-                    ]));
-                }
+            f if f == OxmField::TunnelId as u8 && value_len >= 8 => {
+                m.tunnel_id = Some(u64::from_be_bytes([
+                    value[0], value[1], value[2], value[3], value[4], value[5], value[6], value[7],
+                ]));
             }
             _ => {
                 // Unknown field, skip

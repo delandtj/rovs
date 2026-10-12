@@ -1,0 +1,79 @@
+# rovs publishes no binaries: it is a Rust library workspace (rovs-ovsdb,
+# rovs-openflow, rovs-client, ...) consumed as a git dependency, so the shared
+# `lab-release@v1` action — which ends in `lab build --release --upload` — has
+# nothing to build here and fails with "no binary targets matched filters".
+# This CI is the repo's check instead.
+#
+# It replaces the retired `.github/workflows/ci.yml`, whose every job died at
+# step one on `dtolnay/rust-toolchain@stable`: that action is resolved against
+# code.forgejo.org, which cannot be reached from this instance —
+#
+#   unable to clone 'https://code.forgejo.org/dtolnay/rust-toolchain' ...
+#   remote: Not found.
+#
+# — so the workflow could only ever fail, whatever the code did. The prebaked
+# lab-builder image already carries the toolchain; nothing needs fetching.
+name: ci
+on:
+  push:
+    branches: [main, development, integration]
+  pull_request:
+    branches: [main, development, integration]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ci:
+    runs-on: docker
+    container:
+      image: forge.ourworld.tf/lhumina_code/lab-builder:latest-${{ github.base_ref || github.ref_name }}
+      credentials:
+        username: hero.releaser
+        password: ${{ secrets.FORGE_TOKEN }}
+    defaults:
+      run:
+        shell: bash
+    env:
+      RUST_MIN_STACK: "16777216"
+      # On a pull request ref_name is the request number: build the PR head,
+      # name the checkout after the base so a branch-scoped tool reads the
+      # right level.
+      CI_BRANCH: ${{ github.base_ref || github.ref_name }}
+      CI_FETCH: ${{ github.event.pull_request.number && format('refs/pull/{0}/head', github.event.pull_request.number) || github.ref_name }}
+    steps:
+      - name: Setup (checkout + cargo auth)
+        run: |
+          set -euo pipefail
+          git config --global --add safe.directory "${GITHUB_WORKSPACE}"
+          git init -q .
+          git remote add origin \
+            "https://oauth2:${FORGE_TOKEN}@${GITHUB_SERVER_URL#https://}/${GITHUB_REPOSITORY}.git"
+          git fetch -q --depth 1 origin "${CI_FETCH}"
+          git checkout -q -B "${CI_BRANCH}" FETCH_HEAD
+          git config --global url."https://oauth2:${FORGE_TOKEN}@forge.ourworld.tf/".insteadOf "https://forge.ourworld.tf/"
+          echo "CARGO_NET_GIT_FETCH_WITH_CLI=true" >> "$GITHUB_ENV"
+        env:
+          FORGE_TOKEN: ${{ secrets.FORGE_TOKEN }}
+
+      - name: Format
+        run: cargo fmt --all -- --check
+
+      # `--all-targets` on purpose: the retired workflow's `--lib --bins --tests`
+      # were target SELECTORS, so lib, bin and integration targets were linted
+      # while `[[example]]` targets — this repo's largest consumer surface, 24
+      # of them — were never compiled by any step.
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      # The integration suites that need a live ovsdb-server are `#[ignore]`d and
+      # are not part of this gate: the container ships no openvswitch. What runs
+      # is every unit and doc test, plus the integration targets' non-ignored
+      # tests. `--workspace` and no target selectors, so a new target is covered.
+      - name: Test
+        run: cargo test --workspace
